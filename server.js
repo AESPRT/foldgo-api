@@ -27,8 +27,8 @@ app.use(express.json({
 
 // Helper to encode API keys for Authorization header basic auth [source: 1]
 const getAuthHeader = () => {
-    const key = process.env.PAYMONGO_SECRET_KEY;
-    return `Basic ${Buffer.from(key + ':').toString('base64')}`;
+    const credentials = Buffer.from(`${process.env.PAYMONGO_SECRET_KEY}:`).toString('base64');
+    return `Basic ${credentials}`;
 };
 
 /**
@@ -98,12 +98,12 @@ app.post('/v1/payments/checkout', async (req, res) => {
             body: JSON.stringify(payload)
         });
 
-        const result = await response.json();
-
         if (!response.ok) {
-            throw new Error(result.errors?.[0]?.detail || 'Failed to create payment session');
+            const errorResult = await response.json().catch(() => ({}));
+            throw new Error(errorResult.errors?.[0]?.detail || `PayMongo API responded with status ${response.status}`);
         }
 
+        const result = await response.json();
         // Return payment redirect target back to your Android app client [source: 1]
         const checkoutUrl = result.data.attributes.checkout_url;
         res.status(200).json({
