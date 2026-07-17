@@ -308,8 +308,8 @@ app.get('/v1/payments/subscription/:userId', async (req, res) => {
             LEFT JOIN (
                 SELECT user_id, package_id, updated_at 
                 FROM fold_and_go_transactions 
-                WHERE user_id = $1 AND payment_status = 'SUCCESS'
-                ORDER BY updated_at DESC LIMIT 1
+                WHERE user_id = $1
+                ORDER BY updated_at ASC LIMIT 1
             ) t ON u.id = t.user_id
             WHERE u.id = $1
         `;
