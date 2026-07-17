@@ -74,7 +74,7 @@ app.post('/v1/payments/checkout', async (req, res) => {
                 reference_number: referenceNumber,
                 metadata: {
                     user_id: userId,
-                    sms_credit_qty: smsQty.toString()
+                    sms_credit_qty: finalSmsQty.toString()
                 }
             }
         }
@@ -85,7 +85,7 @@ app.post('/v1/payments/checkout', async (req, res) => {
         await pool.query(
             `INSERT INTO fold_and_go_transactions (reference_number, user_id, sms_credit_qty, amount, payment_status, package_id) 
              VALUES ($1, $2, $3, $4, 'PENDING', $5)`,
-            [referenceNumber, userId, smsQty, (amountInCents / 100), packageId]
+            [referenceNumber, userId, finalSmsQty, (amountInCents / 100), packageId]
         );
 
         // Forward payment session generation to PayMongo
