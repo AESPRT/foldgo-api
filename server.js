@@ -18,14 +18,14 @@ app.get('/', (req, res) => {
     });
 });
 
-// Capture raw body to accurately verify PayMongo's signature hashes [source: 1]
+// Capture raw body to accurately verify PayMongo's signature hashes
 app.use(express.json({
     verify: (req, res, buf) => {
         req.rawBody = buf;
     }
 }));
 
-// Helper to encode API keys for Authorization header basic auth [source: 1]
+// Helper to encode API keys for Authorization header basic auth
 const getAuthHeader = () => {
     const credentials = Buffer.from(`${process.env.PAYMONGO_SECRET_KEY}:`).toString('base64');
     return `Basic ${credentials}`;
@@ -33,7 +33,7 @@ const getAuthHeader = () => {
 
 /**
  * Endpoint 1: Generate Checkout Session
- * Mobilizes Checkout session request and delivers back the checkout URL [source: 1].
+ * Mobilizes Checkout session request and delivers back the checkout URL.
  */
 app.post('/v1/payments/checkout', async (req, res) => {
     const { userId, packageId, amount, smsQty, cusEmail, cusName, cusPhone } = req.body;
@@ -47,7 +47,7 @@ app.post('/v1/payments/checkout', async (req, res) => {
     const protocol = req.protocol; // http or https
     const baseUrl = `${protocol}://${host}`;
 
-    // Payload formatted to PayMongo requirements [source: 1]
+    // Payload formatted to PayMongo requirements
     const payload = {
         data: {
             attributes: {
@@ -59,9 +59,9 @@ app.post('/v1/payments/checkout', async (req, res) => {
                 send_email_receipt: true,
                 show_description: true,
                 show_line_items: true,
-                cancel_url: `${baseUrl}/v1/payments/redirect/cancel?ref=${referenceNumber}`, //[cite: 1]
-                success_url: `${baseUrl}/v1/payments/redirect/success?ref=${referenceNumber}`, //[cite: 1]
-                description: "Fold&Go SMS Package Top-up", // [source: 1]
+                cancel_url: `${baseUrl}/v1/payments/redirect/cancel?ref=${referenceNumber}`,
+                success_url: `${baseUrl}/v1/payments/redirect/success?ref=${referenceNumber}`,
+                description: "Fold&Go SMS Package Top-up",
                 line_items: [
                     {
                         amount: amountInCents,
@@ -70,30 +70,30 @@ app.post('/v1/payments/checkout', async (req, res) => {
                         quantity: 1
                     }
                 ],
-                payment_method_types: ["gcash", "paymaya", "qrph"], // [source: 1]
-                reference_number: referenceNumber, // [source: 1]
+                payment_method_types: ["gcash", "paymaya", "qrph"],
+                reference_number: referenceNumber,
                 metadata: {
-                    user_id: userId, // [source: 1]
-                    sms_credit_qty: smsQty.toString() // [source: 1]
+                    user_id: userId,
+                    sms_credit_qty: smsQty.toString()
                 }
             }
         }
     };
 
     try {
-        // Create order trace in PostgreSQL
+        // FIXED: Now correctly saving the packageId/package_id to your database!
         await pool.query(
-            `INSERT INTO fold_and_go_transactions (reference_number, user_id, sms_credit_qty, amount, payment_status) 
-             VALUES ($1, $2, $3, $4, 'PENDING')`,
-            [referenceNumber, userId, smsQty, (amountInCents / 100)]
+            `INSERT INTO fold_and_go_transactions (reference_number, user_id, sms_credit_qty, amount, payment_status, package_id) 
+             VALUES ($1, $2, $3, $4, 'PENDING', $5)`,
+            [referenceNumber, userId, smsQty, (amountInCents / 100), packageId]
         );
 
-        // Forward payment session generation to PayMongo [source: 1]
+        // Forward payment session generation to PayMongo
         const response = await fetch('https://api.paymongo.com/v2/checkout_sessions', {
             method: 'POST',
             headers: {
-                'Authorization': getAuthHeader(), // [source: 1]
-                'Content-Type': 'application/json' // [source: 1]
+                'Authorization': getAuthHeader(),
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)
         });
@@ -104,11 +104,10 @@ app.post('/v1/payments/checkout', async (req, res) => {
         }
 
         const result = await response.json();
-        // Return payment redirect target back to your Android app client [source: 1]
         const checkoutUrl = result.data.attributes.checkout_url;
         res.status(200).json({
-            checkoutUrl, // [source: 1]
-            referenceNumber // [source: 1]
+            checkoutUrl,
+            referenceNumber
         });
 
     } catch (error) {
@@ -119,41 +118,36 @@ app.post('/v1/payments/checkout', async (req, res) => {
 
 /**
  * Endpoint 2: PayMongo Secure Webhook Receiver
- * Handles secure execution of payment verification and provisioning [source: 1].
  */
 app.post('/v1/payments/paymongo-webhook', async (req, res) => {
-    const signature = req.headers['paymongo-signature']; // [source: 1]
+    const signature = req.headers['paymongo-signature'];
 
-    // 1. Verify Request Signature to guarantee source security [source: 1]
-    if (!signature) return res.status(400).send('Missing signature'); // [source: 1]
+    if (!signature) return res.status(400).send('Missing signature');
 
-    const parts = signature.split(','); // [source: 1]
-    const timestamp = parts[0].split('=')[1]; // [source: 1]
-    const originalSignature = parts[1].split('=')[1]; // [source: 1]
+    const parts = signature.split(',');
+    const timestamp = parts[0].split('=')[1];
+    const originalSignature = parts[1].split('=')[1];
 
-    // Grab the verified raw buffered request string [source: 1]
     const rawBody = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
-    const dataToSign = `${timestamp}.${rawBody}`; // [source: 1]
+    const dataToSign = `${timestamp}.${rawBody}`;
 
     const computedSignature = crypto
-        .createHmac('sha256', process.env.PAYMONGO_WH_SECRET) // [source: 1]
-        .update(dataToSign) // [source: 1]
-        .digest('hex'); // [source: 1]
+        .createHmac('sha256', process.env.PAYMONGO_WH_SECRET)
+        .update(dataToSign)
+        .digest('hex');
 
-    if (computedSignature !== originalSignature) { // [source: 1]
-        return res.status(401).send('Signature mismatch verification failed'); // [source: 1]
+    if (computedSignature !== originalSignature) {
+        return res.status(401).send('Signature mismatch verification failed');
     }
 
-    // 2. Process Valid Payload [source: 1]
-    const event = req.body.data; // [source: 1]
-    if (event.attributes.type === 'checkout_session.payment.paid') { // [source: 1]
-        const sessionObj = event.attributes.data.attributes; // [source: 1]
-        const referenceNumber = sessionObj.reference_number; // [source: 1]
-        const userId = sessionObj.metadata.user_id; // [source: 1]
-        const smsVolume = parseInt(sessionObj.metadata.sms_credit_qty, 10); // [source: 1]
+    const event = req.body.data;
+    if (event.attributes.type === 'checkout_session.payment.paid') {
+        const sessionObj = event.attributes.data.attributes;
+        const referenceNumber = sessionObj.reference_number;
+        const userId = sessionObj.metadata.user_id;
+        const smsVolume = parseInt(sessionObj.metadata.sms_credit_qty, 10);
 
         try {
-            // Idempotency: Verify your DB does not possess this referenceNumber as already success/fulfilled [source: 1]
             const checkQuery = `SELECT payment_status FROM fold_and_go_transactions WHERE reference_number = $1`;
             const checkRes = await pool.query(checkQuery, [referenceNumber]);
 
@@ -161,10 +155,8 @@ app.post('/v1/payments/paymongo-webhook', async (req, res) => {
                 return res.status(200).send({ status: 'already_fulfilled' });
             }
 
-            // Begin Postgres Transaction to safely commit state changes
             await pool.query('BEGIN');
 
-            // Allocate SMS Credits within DB user model 
             const updateBalanceQuery = `
                 UPDATE users 
                 SET sms_credits = COALESCE(sms_credits, 0) + $1 
@@ -172,7 +164,6 @@ app.post('/v1/payments/paymongo-webhook', async (req, res) => {
             `;
             await pool.query(updateBalanceQuery, [smsVolume, userId]);
 
-            // Update Fold&Go application transaction status [source: 1]
             const updateTxnQuery = `
                 UPDATE fold_and_go_transactions 
                 SET payment_status = 'SUCCESS', updated_at = NOW() 
@@ -183,26 +174,24 @@ app.post('/v1/payments/paymongo-webhook', async (req, res) => {
             await pool.query('COMMIT');
 
             console.log(`Successfully credited ${smsVolume} SMS to User ${userId}`);
-            return res.status(200).send({ status: 'fulfilled' }); // [source: 1]
+            return res.status(200).send({ status: 'fulfilled' });
 
         } catch (dbError) {
             await pool.query('ROLLBACK');
-            console.error('Database transaction failure:', dbError); // [source: 1]
-            return res.status(500).send('Fulfillment pipeline stalled'); // [source: 1]
+            console.error('Database transaction failure:', dbError);
+            return res.status(500).send('Fulfillment pipeline stalled');
         }
     }
 
-    res.status(400).send('Event unhandled'); // [source: 1]
+    res.status(400).send('Event unhandled');
 });
 
 /**
  * Endpoint 3: Success Landing Page
- * Handles successful redirects when a user completes their payment.
  */
 app.get('/v1/payments/redirect/success', async (req, res) => {
     const { ref } = req.query;
 
-    // Optional: Query the DB to check if the transaction is already marked SUCCESS
     let transactionStatus = 'processing';
     try {
         const checkQuery = `SELECT payment_status FROM fold_and_go_transactions WHERE reference_number = $1`;
@@ -214,7 +203,6 @@ app.get('/v1/payments/redirect/success', async (req, res) => {
         console.error('Error fetching status for success page:', err);
     }
 
-    // You can serve an elegant landing page or redirect to your Android app via a deep link
     res.send(`
         <!DOCTYPE html>
         <html lang="en">
@@ -235,7 +223,6 @@ app.get('/v1/payments/redirect/success', async (req, res) => {
                 <h1>🎉 Thank You!</h1>
                 <p>Your payment for Reference <strong>${ref || 'N/A'}</strong> was successful.</p>
                 <p>We are updating your Fold&Go SMS credits now. You can safely close this tab and return to the app.</p>
-                <!-- Deep link back to your Android App if applicable -->
                 <a href="foldandgo://payment/success?ref=${ref}" class="btn">Back to Fold&Go</a>
             </div>
         </body>
@@ -245,13 +232,11 @@ app.get('/v1/payments/redirect/success', async (req, res) => {
 
 /**
  * Endpoint 4: Cancel Landing Page
- * Handles gracefully when a user explicitly exits the checkout session.
  */
 app.get('/v1/payments/redirect/cancel', async (req, res) => {
     const { ref } = req.query;
 
     try {
-        // Mark the transaction as CANCELLED in your database
         const updateTxnQuery = `
             UPDATE fold_and_go_transactions 
             SET payment_status = 'CANCELLED', updated_at = NOW() 
@@ -282,7 +267,6 @@ app.get('/v1/payments/redirect/cancel', async (req, res) => {
                 <h1>Payment Cancelled</h1>
                 <p>The transaction (Ref: <strong>${ref || 'N/A'}</strong>) was not completed.</p>
                 <p>No charges were made. You can try again whenever you are ready.</p>
-                <!-- Deep link back to your Android App if applicable -->
                 <a href="foldandgo://payment/cancel?ref=${ref}" class="btn">Return to App</a>
             </div>
         </body>
@@ -292,26 +276,22 @@ app.get('/v1/payments/redirect/cancel', async (req, res) => {
 
 /**
  * Endpoint: Get latest subscription details
- * Used by the Android app to sync the local database after payment.
+ * FIXED: Uses direct flat JOIN. Orders ASC to pull the very first transaction on top.
  */
 app.get('/v1/payments/subscription/:userId', async (req, res) => {
     const { userId } = req.params;
 
     try {
-        // Fetch the user's current credits and their latest transaction
         const query = `
             SELECT 
                 u.sms_credits,
                 t.package_id as plan_name,
                 t.updated_at as last_update
             FROM users u
-            LEFT JOIN (
-                SELECT user_id, package_id, updated_at 
-                FROM fold_and_go_transactions 
-                WHERE user_id = $1
-                ORDER BY updated_at ASC LIMIT 1
-            ) t ON u.id = t.user_id
+            LEFT JOIN fold_and_go_transactions t ON u.id = t.user_id
             WHERE u.id = $1
+            ORDER BY t.created_at ASC 
+            LIMIT 1
         `;
 
         const result = await pool.query(query, [userId]);
@@ -320,7 +300,7 @@ app.get('/v1/payments/subscription/:userId', async (req, res) => {
             const row = result.rows[0];
             res.status(200).json({
                 remainingSms: row.sms_credits || 0,
-                planName: row.plan_name || "Starter Wash", // Fallback if no transaction found
+                planName: row.plan_name || "Starter Wash",
                 expiryDate: row.last_update ? new Date(row.last_update).getTime() + (30 * 24 * 60 * 60 * 1000) : null
             });
         } else {
