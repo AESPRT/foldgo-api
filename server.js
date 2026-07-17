@@ -282,7 +282,7 @@ app.get('/v1/payments/subscription/:userId', async (req, res) => {
                 updated_at as last_update
             FROM fold_and_go_transactions
             WHERE user_id = $1
-            ORDER BY created_at ASC 
+            ORDER BY created_at DESC 
             LIMIT 1
         `;
 
