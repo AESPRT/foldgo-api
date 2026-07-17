@@ -157,13 +157,6 @@ app.post('/v1/payments/paymongo-webhook', async (req, res) => {
 
             await pool.query('BEGIN');
 
-            const updateBalanceQuery = `
-                UPDATE users 
-                SET sms_credits = COALESCE(sms_credits, 0) + $1 
-                WHERE id = $2
-            `;
-            await pool.query(updateBalanceQuery, [smsVolume, userId]);
-
             const updateTxnQuery = `
                 UPDATE fold_and_go_transactions 
                 SET payment_status = 'SUCCESS', updated_at = NOW() 
@@ -284,13 +277,12 @@ app.get('/v1/payments/subscription/:userId', async (req, res) => {
     try {
         const query = `
             SELECT 
-                u.sms_credits,
-                t.package_id as plan_name,
-                t.updated_at as last_update
-            FROM users u
-            LEFT JOIN fold_and_go_transactions t ON u.id = t.user_id
-            WHERE u.id = $1
-            ORDER BY t.created_at ASC 
+                sms_credit_qty,
+                package_id as plan_name,
+                updated_at as last_update
+            FROM fold_and_go_transactions
+            WHERE user_id = $1
+            ORDER BY created_at ASC 
             LIMIT 1
         `;
 
@@ -299,7 +291,7 @@ app.get('/v1/payments/subscription/:userId', async (req, res) => {
         if (result.rows.length > 0) {
             const row = result.rows[0];
             res.status(200).json({
-                remainingSms: row.sms_credits || 0,
+                remainingSms: row.sms_credit_qty || 0,
                 planName: row.plan_name || "Starter Wash",
                 expiryDate: row.last_update ? new Date(row.last_update).getTime() + (30 * 24 * 60 * 60 * 1000) : null
             });
