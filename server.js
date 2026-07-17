@@ -52,9 +52,9 @@ app.post('/v1/payments/checkout', async (req, res) => {
         data: {
             attributes: {
                 billing: {
-                    email: cusEmail || "customer@foldandgo.ph",
-                    name: cusName || "Fold and Go User",
-                    phone: cusPhone || "+639171234567"
+                    email: cusEmail || "",
+                    name: cusName || "",
+                    phone: cusPhone || ""
                 },
                 send_email_receipt: true,
                 show_description: true,
@@ -288,6 +288,48 @@ app.get('/v1/payments/redirect/cancel', async (req, res) => {
         </body>
         </html>
     `);
+});
+
+/**
+ * Endpoint: Get latest subscription details
+ * Used by the Android app to sync the local database after payment.
+ */
+app.get('/v1/payments/subscription/:userId', async (req, res) => {
+    const { userId } = req.params;
+
+    try {
+        // Fetch the user's current credits and their latest transaction
+        const query = `
+            SELECT 
+                u.sms_credits,
+                t.package_id as plan_name,
+                t.updated_at as last_update
+            FROM users u
+            LEFT JOIN (
+                SELECT user_id, package_id, updated_at 
+                FROM fold_and_go_transactions 
+                WHERE user_id = $1 AND payment_status = 'SUCCESS'
+                ORDER BY updated_at DESC LIMIT 1
+            ) t ON u.id = t.user_id
+            WHERE u.id = $1
+        `;
+
+        const result = await pool.query(query, [userId]);
+
+        if (result.rows.length > 0) {
+            const row = result.rows[0];
+            res.status(200).json({
+                remainingSms: row.sms_credits || 0,
+                planName: row.plan_name || "Starter Wash", // Fallback if no transaction found
+                expiryDate: row.last_update ? new Date(row.last_update).getTime() + (30 * 24 * 60 * 60 * 1000) : null
+            });
+        } else {
+            res.status(404).json({ error: "User not found" });
+        }
+    } catch (error) {
+        console.error('Error fetching subscription:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 app.listen(port, () => {
