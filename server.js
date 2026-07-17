@@ -11,6 +11,13 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
 });
 
+app.get('/', (req, res) => {
+    res.status(200).json({
+        status: "success",
+        message: "FoldGo API is live and healthy"
+    });
+});
+
 // Capture raw body to accurately verify PayMongo's signature hashes [source: 1]
 app.use(express.json({
     verify: (req, res, buf) => {

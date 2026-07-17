@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: fold_go_backend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      # Points directly to the 'db' service name below inside the docker network
+      - DATABASE_URL=postgresql://aedev_admin:super_secure_pass@db:5432/fold_and_go_db
+      - PAYMONGO_SECRET_KEY=${PAYMONGO_SECRET_KEY}
+      - PAYMONGO_WH_SECRET=${PAYMONGO_WH_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    container_name: fold_go_postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=aedev_admin
+      - POSTGRES_PASSWORD=super_secure_pass
+      - POSTGRES_DB=fold_and_go_db
+    ports:
+      - "127.0.0.1:5432:5432" # Securely binds Postgres only to localhost on the host machine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U aedev_admin -d fold_and_go_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
