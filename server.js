@@ -204,18 +204,90 @@ app.get('/v1/payments/redirect/success', async (req, res) => {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Payment Successful</title>
             <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 50px; background-color: #f7f9fa; }
-                .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: inline-block; max-width: 400px; width: 100%; }
-                h1 { color: #2ecc71; margin-bottom: 10px; }
-                p { color: #555; line-height: 1.5; }
-                .btn { display: inline-block; margin-top: 20px; padding: 12px 24px; background-color: #3498db; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; }
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { 
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+                    background-color: #0F172A; 
+                    color: #F8FAFC;
+                    display: grid;
+                    place-items: center;
+                    min-height: 100vh;
+                    padding: 24px;
+                }
+                .card { 
+                    background: #1E293B; 
+                    padding: 40px 32px; 
+                    border-radius: 24px; 
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2); 
+                    max-width: 440px; 
+                    width: 100%; 
+                    text-align: center;
+                    border: 1px solid #334155;
+                }
+                .icon-wrapper {
+                    width: 72px;
+                    height: 72px;
+                    background: rgba(16, 185, 129, 0.1);
+                    border-radius: 50%;
+                    display: grid;
+                    place-items: center;
+                    margin: 0 auto 24px;
+                    color: #10B981;
+                    font-size: 32px;
+                }
+                h1 { 
+                    font-size: 24px;
+                    font-weight: 700;
+                    color: #FFFFFF; 
+                    margin-bottom: 12px; 
+                    letter-spacing: -0.02em;
+                }
+                p { 
+                    color: #94A3B8; 
+                    font-size: 15px;
+                    line-height: 1.6; 
+                    margin-bottom: 24px;
+                }
+                .ref-badge {
+                    background: #334155;
+                    color: #E2E8F0;
+                    padding: 6px 12px;
+                    border-radius: 8px;
+                    font-family: monospace;
+                    font-size: 14px;
+                    font-weight: 600;
+                    display: inline-block;
+                    margin: 4px 0;
+                }
+                .btn { 
+                    display: block; 
+                    width: 100%;
+                    padding: 16px 24px; 
+                    background-color: #3B82F6; 
+                    color: white; 
+                    text-decoration: none; 
+                    border-radius: 14px; 
+                    font-weight: 600; 
+                    font-size: 16px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
+                }
+                .btn:hover {
+                    background-color: #2563EB;
+                    transform: translateY(-1px);
+                    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+                }
+                .btn:active {
+                    transform: translateY(1px);
+                }
             </style>
         </head>
         <body>
             <div class="card">
-                <h1>🎉 Thank You!</h1>
-                <p>Your payment for Reference <strong>${ref || 'N/A'}</strong> was successful.</p>
-                <p>We are updating your Fold&Go SMS credits now. You can safely close this tab and return to the app.</p>
+                <div class="icon-wrapper">✓</div>
+                <h1>Payment Successful</h1>
+                <p>Your payment for reference <br><span class="ref-badge">${ref || 'N/A'}</span> <br>was processed successfully.</p>
+                <p style="font-size: 14px; color: #64748B; margin-bottom: 32px;">We are updating your Fold&Go SMS credits now. You can safely close this window or tap below to jump back into the action.</p>
                 <a href="foldandgo://payment/success?ref=${ref}" class="btn">Back to Fold&Go</a>
             </div>
         </body>
@@ -248,18 +320,90 @@ app.get('/v1/payments/redirect/cancel', async (req, res) => {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Payment Cancelled</title>
             <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 50px; background-color: #f7f9fa; }
-                .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: inline-block; max-width: 400px; width: 100%; }
-                h1 { color: #e74c3c; margin-bottom: 10px; }
-                p { color: #555; line-height: 1.5; }
-                .btn { display: inline-block; margin-top: 20px; padding: 12px 24px; background-color: #7f8c8d; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; }
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { 
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+                    background-color: #0F172A; 
+                    color: #F8FAFC;
+                    display: grid;
+                    place-items: center;
+                    min-height: 100vh;
+                    padding: 24px;
+                }
+                .card { 
+                    background: #1E293B; 
+                    padding: 40px 32px; 
+                    border-radius: 24px; 
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2); 
+                    max-width: 440px; 
+                    width: 100%; 
+                    text-align: center;
+                    border: 1px solid #334155;
+                }
+                .icon-wrapper {
+                    width: 72px;
+                    height: 72px;
+                    background: rgba(239, 68, 68, 0.1);
+                    border-radius: 50%;
+                    display: grid;
+                    place-items: center;
+                    margin: 0 auto 24px;
+                    color: #EF4444;
+                    font-size: 32px;
+                    font-weight: 300;
+                }
+                h1 { 
+                    font-size: 24px;
+                    font-weight: 700;
+                    color: #FFFFFF; 
+                    margin-bottom: 12px; 
+                    letter-spacing: -0.02em;
+                }
+                p { 
+                    color: #94A3B8; 
+                    font-size: 15px;
+                    line-height: 1.6; 
+                    margin-bottom: 24px;
+                }
+                .ref-badge {
+                    background: #334155;
+                    color: #E2E8F0;
+                    padding: 6px 12px;
+                    border-radius: 8px;
+                    font-family: monospace;
+                    font-size: 14px;
+                    font-weight: 600;
+                    display: inline-block;
+                    margin: 4px 0;
+                }
+                .btn { 
+                    display: block; 
+                    width: 100%;
+                    padding: 16px 24px; 
+                    background-color: #475569; 
+                    color: white; 
+                    text-decoration: none; 
+                    border-radius: 14px; 
+                    font-weight: 600; 
+                    font-size: 16px;
+                    transition: all 0.2s ease;
+                }
+                .btn:hover {
+                    background-color: #334155;
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+                .btn:active {
+                    transform: translateY(1px);
+                }
             </style>
         </head>
         <body>
             <div class="card">
+                <div class="icon-wrapper">✕</div>
                 <h1>Payment Cancelled</h1>
-                <p>The transaction (Ref: <strong>${ref || 'N/A'}</strong>) was not completed.</p>
-                <p>No charges were made. You can try again whenever you are ready.</p>
+                <p>The transaction for reference <br><span class="ref-badge">${ref || 'N/A'}</span> <br>was not completed.</p>
+                <p style="font-size: 14px; color: #64748B; margin-bottom: 32px;">No charges were made to your account. You can safely return to the app and try again whenever you are ready.</p>
                 <a href="foldandgo://payment/cancel?ref=${ref}" class="btn">Return to App</a>
             </div>
         </body>
