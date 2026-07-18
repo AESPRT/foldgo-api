@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors'); // 1. Import the cors middleware
 require('dotenv').config();
 
 const systemRoutes = require('./src/routes/system.routes');
@@ -6,6 +7,29 @@ const paymentRoutes = require('./src/routes/payment.routes');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// 2. Configure Allowed Origins
+const allowedOrigins = [
+    'https://api.aesprt.com',
+    'http://localhost:3060', // Your landing page port configuration
+    'http://localhost:3000'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow server-to-server requests or tools like Postman (which don't send an Origin header)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Blocked by CORS policy'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Capture raw buffers across payment networks to accurately verify signature hashes
 app.use(express.json({
