@@ -216,7 +216,12 @@ exports.verifyOnboardingToken = async (req, res) => {
 
 exports.renderSuccessPage = async (req, res) => {
     const { ref, successUrl } = req.query;
-    if (ref && ref.startsWith('TXN-SUB-') && successUrl) return res.redirect(successUrl);
+    if (ref && ref.startsWith('TXN-SUB-') && successUrl) {
+        const redirectUrl = successUrl.includes('?')
+            ? `${successUrl}&referenceNumber=${encodeURIComponent(ref)}`
+            : `${successUrl}?referenceNumber=${encodeURIComponent(ref)}`;
+        return res.redirect(redirectUrl);
+    }
 
     res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✓ Payment Successful</h1><p>Reference: ${ref}</p></body></html>`);
 };
