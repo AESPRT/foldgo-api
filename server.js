@@ -10,9 +10,11 @@ const port = process.env.PORT || 3000;
 
 // 2. Configure Allowed Origins
 const allowedOrigins = [
-    'https://api.aesprt.com',
-    'http://localhost:3060', // Your landing page port configuration
-    'http://localhost:3000'
+    'https://aesprt.com',          // Base landing page domain
+    'https://fold-go.aesprt.com',  // Subdomain variant if used
+    'https://api.aesprt.com',      // API domain fallback
+    'http://localhost:3060',       // Your landing page Docker host port configuration
+    'http://localhost:3000'        // Standard local development port
 ];
 
 app.use(cors({
@@ -23,6 +25,8 @@ app.use(cors({
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
+            // Log the blocked origin to your docker logs so you can see exactly what domain failed
+            console.error(`🛑 Blocked by CORS: ${origin}`);
             callback(new Error('Blocked by CORS policy'));
         }
     },
