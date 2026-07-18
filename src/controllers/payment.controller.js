@@ -46,7 +46,9 @@ exports.createCheckoutSession = async (req, res) => {
             type: "SAAS",
             package_id: packageId,
             billing_cycle: cycle || "MONTHLY",
-            session_token: sessionToken || ""
+            session_token: sessionToken || "",
+            success_url: successUrl || "",
+            cancel_url: cancelUrl || ""
         };
     } else {
         let finalSmsQty = smsQty ? parseInt(smsQty, 10) : 1000;
@@ -58,13 +60,18 @@ exports.createCheckoutSession = async (req, res) => {
             user_id: userId,
             type: "SMS",
             sms_credit_qty: finalSmsQty.toString(),
-            session_token: sessionToken || ""
+            session_token: sessionToken || "",
+            success_url: successUrl || "",
+            cancel_url: cancelUrl || ""
         };
     }
 
     const host = req.get('host');
     const protocol = req.protocol;
     const baseUrl = `${protocol}://${host}`;
+
+    const successRedirectQuery = successUrl ? `&successUrl=${encodeURIComponent(successUrl)}` : '';
+    const cancelRedirectQuery = cancelUrl ? `&cancelUrl=${encodeURIComponent(cancelUrl)}` : '';
 
     const payload = {
         data: {
@@ -73,8 +80,8 @@ exports.createCheckoutSession = async (req, res) => {
                 send_email_receipt: true,
                 show_description: true,
                 show_line_items: true,
-                cancel_url: `${baseUrl}/v1/payments/redirect/cancel?ref=${referenceNumber}`,
-                success_url: `${baseUrl}/v1/payments/redirect/success?ref=${referenceNumber}`,
+                cancel_url: `${baseUrl}/v1/payments/redirect/cancel?ref=${referenceNumber}${cancelRedirectQuery}`,
+                success_url: `${baseUrl}/v1/payments/redirect/success?ref=${referenceNumber}${successRedirectQuery}`,
                 description: isSaaS ? "Fold&Go Business Tier Activation" : "Fold&Go SMS Package Top-up",
                 line_items: [{ amount: amountInCents, currency: "PHP", name: lineItemName, quantity: 1 }],
                 payment_method_types: ["gcash", "paymaya", "card", "qrph"],
@@ -155,9 +162,9 @@ exports.handleWebhookFulfillment = async (req, res) => {
                     [referenceNumber, clientName, clientEmail, clientPhone, passwordHash, packageId, billingCycle]
                 );
 
-                const dashboardUrl = "https://fold-go.aesprt.com/ordering";
+                const dashboardUrl = "https://fold-go.aesprt.com/admin-dashboard";
                 const sessionToken = sessionObj.metadata.session_token || "";
-                const downloadPageUrl = `https://fold-go.aesprt.com/download/apk/`;
+                const downloadPageUrl = `https://fold-go.aesprt.com/download/apk`;
 
                 await mailTransporter.sendMail({
                     from: `"Fold&Go Operations" <${process.env.EMAIL_USER}>`,
@@ -209,7 +216,7 @@ exports.verifyOnboardingToken = async (req, res) => {
 
 exports.renderSuccessPage = async (req, res) => {
     const { ref, successUrl } = req.query;
-    if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`${successUrl}`);
+    if (ref && ref.startsWith('TXN-SUB-') && successUrl) return res.redirect(successUrl);
 
     res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✓ Payment Successful</h1><p>Reference: ${ref}</p></body></html>`);
 };
@@ -217,7 +224,7 @@ exports.renderSuccessPage = async (req, res) => {
 exports.renderCancelPage = async (req, res) => {
     const { ref, cancelUrl } = req.query;
     try { await pool.query(`UPDATE fold_and_go_transactions SET payment_status = 'CANCELLED' WHERE reference_number = $1 AND payment_status = 'PENDING'`, [ref]); } catch (e) { }
-    if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`${cancelUrl}`);
+    if (ref && ref.startsWith('TXN-SUB-') && cancelUrl) return res.redirect(cancelUrl);
 
     res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✕ Payment Cancelled</h1></body></html>`);
 };
