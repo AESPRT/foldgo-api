@@ -22,7 +22,7 @@ const PLAN_LIMITS = {
 };
 
 exports.createCheckoutSession = async (req, res) => {
-    const { userId, packageId, amount, smsQty, cusEmail, cusName, cusPhone, type, cycle, sessionToken } = req.body;
+    const { userId, packageId, amount, smsQty, cusEmail, cusName, cusPhone, type, cycle, sessionToken, successUrl, cancelUrl } = req.body;
     const isSaaS = type === 'SAAS';
 
     let lineItemName = "";
@@ -157,7 +157,7 @@ exports.handleWebhookFulfillment = async (req, res) => {
 
                 const dashboardUrl = "https://fold-go.aesprt.com/ordering";
                 const sessionToken = sessionObj.metadata.session_token || "";
-                const downloadPageUrl = `https://fold-go.aesprt.com/payment-success?referenceNumber=${referenceNumber}${sessionToken ? `&sessionToken=${encodeURIComponent(sessionToken)}` : ''}`;
+                const downloadPageUrl = `https://fold-go.aesprt.com/download/apk/`;
 
                 await mailTransporter.sendMail({
                     from: `"Fold&Go Operations" <${process.env.EMAIL_USER}>`,
@@ -208,16 +208,16 @@ exports.verifyOnboardingToken = async (req, res) => {
 };
 
 exports.renderSuccessPage = async (req, res) => {
-    const { ref, sessionToken } = req.query;
-    if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`https://fold-go.aesprt.com/payment-success?referenceNumber=${ref}${sessionToken ? `&sessionToken=${encodeURIComponent(sessionToken)}` : ''}`);
+    const { ref, successUrl } = req.query;
+    if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`${successUrl}`);
 
     res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✓ Payment Successful</h1><p>Reference: ${ref}</p></body></html>`);
 };
 
 exports.renderCancelPage = async (req, res) => {
-    const { ref } = req.query;
+    const { ref, cancelUrl } = req.query;
     try { await pool.query(`UPDATE fold_and_go_transactions SET payment_status = 'CANCELLED' WHERE reference_number = $1 AND payment_status = 'PENDING'`, [ref]); } catch (e) { }
-    if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`https://fold-go.aesprt.com/`);
+    if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`${cancelUrl}`);
 
     res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✕ Payment Cancelled</h1></body></html>`);
 };
