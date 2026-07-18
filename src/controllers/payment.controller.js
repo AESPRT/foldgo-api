@@ -75,7 +75,7 @@ exports.createCheckoutSession = async (req, res) => {
                 success_url: `${baseUrl}/v1/payments/redirect/success?ref=${referenceNumber}`,
                 description: isSaaS ? "Fold&Go Business Tier Activation" : "Fold&Go SMS Package Top-up",
                 line_items: [{ amount: amountInCents, currency: "PHP", name: lineItemName, quantity: 1 }],
-                payment_method_types: ["gcash", "paymaya", "card"],
+                payment_method_types: ["gcash", "paymaya", "card", "qrph"],
                 reference_number: referenceNumber,
                 metadata: metadataBlock
             }
