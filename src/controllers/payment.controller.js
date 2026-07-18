@@ -209,7 +209,7 @@ exports.verifyOnboardingToken = async (req, res) => {
 
 exports.renderSuccessPage = async (req, res) => {
     const { ref, sessionToken } = req.query;
-    if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`https://fold-go.aesprt.com/payment-success?referenceNumber=${ref}`);
+    if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`https://fold-go.aesprt.com/payment-success?referenceNumber=${ref}${sessionToken ? `&sessionToken=${encodeURIComponent(sessionToken)}` : ''}`);
 
     res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✓ Payment Successful</h1><p>Reference: ${ref}</p></body></html>`);
 };
