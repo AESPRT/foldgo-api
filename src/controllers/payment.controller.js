@@ -22,7 +22,7 @@ const PLAN_LIMITS = {
 };
 
 exports.createCheckoutSession = async (req, res) => {
-    const { userId, packageId, amount, smsQty, cusEmail, cusName, cusPhone, type, cycle } = req.body;
+    const { userId, packageId, amount, smsQty, cusEmail, cusName, cusPhone, type, cycle, sessionToken } = req.body;
     const isSaaS = type === 'SAAS';
 
     let lineItemName = "";
@@ -45,7 +45,8 @@ exports.createCheckoutSession = async (req, res) => {
             user_id: userId || `GUEST-${Date.now()}`,
             type: "SAAS",
             package_id: packageId,
-            billing_cycle: cycle || "MONTHLY"
+            billing_cycle: cycle || "MONTHLY",
+            session_token: sessionToken || ""
         };
     } else {
         let finalSmsQty = smsQty ? parseInt(smsQty, 10) : 1000;
@@ -56,7 +57,8 @@ exports.createCheckoutSession = async (req, res) => {
         metadataBlock = {
             user_id: userId,
             type: "SMS",
-            sms_credit_qty: finalSmsQty.toString()
+            sms_credit_qty: finalSmsQty.toString(),
+            session_token: sessionToken || ""
         };
     }
 
@@ -154,7 +156,8 @@ exports.handleWebhookFulfillment = async (req, res) => {
                 );
 
                 const dashboardUrl = "https://fold-go.aesprt.com/ordering";
-                const downloadPageUrl = `https://fold-go.aesprt.com/payment-success?referenceNumber=${referenceNumber}`;
+                const sessionToken = sessionObj.metadata.session_token || "";
+                const downloadPageUrl = `https://fold-go.aesprt.com/payment-success?referenceNumber=${referenceNumber}${sessionToken ? `&sessionToken=${encodeURIComponent(sessionToken)}` : ''}`;
 
                 await mailTransporter.sendMail({
                     from: `"Fold&Go Operations" <${process.env.EMAIL_USER}>`,
@@ -205,7 +208,7 @@ exports.verifyOnboardingToken = async (req, res) => {
 };
 
 exports.renderSuccessPage = async (req, res) => {
-    const { ref } = req.query;
+    const { ref, sessionToken } = req.query;
     if (ref && ref.startsWith('TXN-SUB-')) return res.redirect(`https://fold-go.aesprt.com/payment-success?referenceNumber=${ref}`);
 
     res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✓ Payment Successful</h1><p>Reference: ${ref}</p></body></html>`);
