@@ -5,11 +5,11 @@ WORKDIR /usr/src/app
 # Copy dependency manifests first
 COPY package*.json ./
 
-# 1. Install npx and generate the PayMongo SDK mapping in package.json first
+# 1. Generate the PayMongo SDK mapping in package.json
 RUN npx api install "@paymongo/v3#1fzuu181tmdopg9dp"
 
-# 2. Run the clean production install so Node links the newly added @paymongo/v3 dependency
-RUN npm ci --only=production
+# 2. Use npm install instead of npm ci so it links the dynamic SDK mapping
+RUN npm install --omit=dev
 
 # 3. Copy the rest of your application code
 COPY . .
