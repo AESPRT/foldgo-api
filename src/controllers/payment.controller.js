@@ -95,8 +95,7 @@ exports.createCheckoutSession = async (req, res) => {
             [referenceNumber, metadataBlock.user_id, isSaaS ? 0 : parseInt(metadataBlock.sms_credit_qty, 10), (amountInCents / 100), packageId]
         );
 
-        // 2. Standard Axios request matching the identical PayMongo v3 Session Endpoint API contract
-        const response = await axios.post('https://api.paymongo.com/v3/checkout_sessions', payloadData, {
+        const response = await axios.post('https://api.paymongo.com/v2/checkout_sessions', payloadData, {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Basic ${Buffer.from(process.env.PAYMONGO_SECRET_KEY + ':').toString('base64')}`
