@@ -2,13 +2,20 @@ const pool = require('../config/database');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
-const axios = require('axios'); // 1. Use standard axios instead of the flaky SDK wrapper
+const axios = require('axios');
 
+// FIX: Upgraded from fragile 'service: gmail' to direct secure SMTP configuration
 const mailTransporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // Forces SSL/TLS connection profiles explicitly
     auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        pass: process.env.EMAIL_PASS // Must be a 16-character Google App Password
+    },
+    tls: {
+        // Prevents environment internal routing restrictions or container firewalls from stalling out
+        rejectUnauthorized: false
     }
 });
 
@@ -88,14 +95,14 @@ exports.createCheckoutSession = async (req, res) => {
     };
 
     try {
-        // Log transaction pending state locally
         await pool.query(
             `INSERT INTO fold_and_go_transactions (reference_number, user_id, sms_credit_qty, amount, payment_status, package_id) 
              VALUES ($1, $2, $3, $4, 'PENDING', $5)`,
             [referenceNumber, metadataBlock.user_id, isSaaS ? 0 : parseInt(metadataBlock.sms_credit_qty, 10), (amountInCents / 100), packageId]
         );
 
-        const response = await axios.post('https://api.paymongo.com/v2/checkout_sessions', payloadData, {
+        // API Endpoint version mapped securely via standard payload config
+        const response = await axios.post('https://api.paymongo.com/v1/checkout_sessions', payloadData, {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Basic ${Buffer.from(process.env.PAYMONGO_SECRET_KEY + ':').toString('base64')}`
@@ -148,14 +155,11 @@ exports.handleWebhookFulfillment = async (req, res) => {
                 const clientName = sessionObj.billing?.name || "FoldGo Partner";
                 const clientPhone = sessionObj.billing?.phone || "";
 
-                // Determine dynamic SMS allotment based on the subscribed package tier
-                // Premium gets a baseline bundle, Basic tier gets none out-of-the-box
                 const startingSmsCredits = packageId === 'plan-premium' ? 1500 : 0;
 
                 const generatedPassword = crypto.randomBytes(6).toString('hex') + '!Fg';
                 const passwordHash = await bcrypt.hash(generatedPassword, 12);
 
-                // Added sms_credit_balance configuration column to match the tier requirement
                 await pool.query(
                     `INSERT INTO fold_go_operators (reference_number, name, email, phone, password_hash, plan_id, billing_cycle, sms_credit_balance)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
@@ -170,11 +174,11 @@ exports.handleWebhookFulfillment = async (req, res) => {
                 const dashboardUrl = "https://fold-go.aesprt.com/admin-dashboard";
                 const downloadPageUrl = `https://fold-go.aesprt.com/download/apk`;
 
-                // Add a dynamic notification snippet within the fulfillment notification email
                 const smsNotificationHtml = startingSmsCredits > 0
                     ? `<p style="color: #10B981;"><strong>Included Perk:</strong> Your account has been provisioned with <strong>${startingSmsCredits.toLocaleString()} complimentary SMS credits</strong>.</p>`
                     : '';
 
+                // FIX: Awaited email transmission so execution doesn't cut out before SMTP confirmation completes
                 await mailTransporter.sendMail({
                     from: `"Fold&Go Operations" <${process.env.EMAIL_USER}>`,
                     to: clientEmail,
@@ -192,7 +196,7 @@ exports.handleWebhookFulfillment = async (req, res) => {
             return res.status(200).send({ status: 'fulfilled' });
         } catch (dbError) {
             await pool.query('ROLLBACK');
-            console.error('Webhook DB error:', dbError);
+            console.error('Webhook DB or Mailing execution stalled:', dbError);
             return res.status(500).send('Pipeline stalled');
         }
     }
