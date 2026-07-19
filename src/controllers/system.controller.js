@@ -56,6 +56,11 @@ exports.loginOperator = async (req, res) => {
             return res.status(401).json({ error: "Invalid credentials." });
         }
 
+        console.log('--- LOGIN DEBUG ---');
+        console.log('Incoming Email:', email.trim().toLowerCase());
+        console.log('Incoming Plain Password:', password);
+        console.log('Stored Hash in DB:', operator.password_hash);
+
         // FIX: Mapping operatorId explicitly to email since it serves as the unique identity string
         const token = jwt.sign(
             { operatorId: operator.email, email: operator.email, planId: operator.plan_id },
