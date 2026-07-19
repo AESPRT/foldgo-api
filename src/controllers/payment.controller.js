@@ -4,7 +4,7 @@ const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 const axios = require('axios');
 
-// REMOVED: Static global evaluation. Moved directly into the transport closure.
+// Direct, reliable SMTP transporter setup
 const mailTransporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
@@ -49,8 +49,6 @@ exports.createCheckoutSession = async (req, res) => {
             session_token: sessionToken || "",
             success_url: successUrl || "",
             cancel_url: cancelUrl || "",
-            // FIX: Explicitly passing backup fields into metadata because PayMongo 
-            // sometimes replaces the primary billing block during e-wallet flows.
             customer_email: cusEmail || "",
             customer_name: cusName || "FoldGo Partner"
         };
@@ -137,13 +135,16 @@ exports.handleWebhookFulfillment = async (req, res) => {
     if (event.attributes.type === 'checkout_session.payment.paid') {
         const sessionObj = event.attributes.data.attributes;
         const referenceNumber = sessionObj.reference_number;
-        const txType = sessionObj.metadata.type || "SMS";
+        const txType = sessionObj.metadata?.type || "SMS";
 
         try {
             const checkRes = await pool.query(`SELECT payment_status FROM fold_and_go_transactions WHERE reference_number = $1`, [referenceNumber]);
             if (checkRes.rows.length > 0 && checkRes.rows[0].payment_status === 'SUCCESS') {
                 return res.status(200).send({ status: 'already_fulfilled' });
             }
+
+            // Target values configuration for background operations
+            let emailPayload = null;
 
             await pool.query('BEGIN');
             await pool.query(`UPDATE fold_and_go_transactions SET payment_status = 'SUCCESS', updated_at = NOW() WHERE reference_number = $1`, [referenceNumber]);
@@ -152,13 +153,12 @@ exports.handleWebhookFulfillment = async (req, res) => {
                 const packageId = sessionObj.metadata.package_id;
                 const billingCycle = sessionObj.metadata.billing_cycle;
 
-                // FIX: Fallback sequence targeting metadata directly to protect against missing billing payloads
                 const clientEmail = sessionObj.billing?.email || sessionObj.metadata?.customer_email || "";
                 const clientName = sessionObj.billing?.name || sessionObj.metadata?.customer_name || "FoldGo Partner";
                 const clientPhone = sessionObj.billing?.phone || "";
 
                 if (!clientEmail) {
-                    throw new Error("Target customer email resolved to empty state. Skipping registration email pipeline.");
+                    throw new Error("Target customer email resolved to empty state.");
                 }
 
                 const startingSmsCredits = packageId === 'plan-premium' ? 1500 : 0;
@@ -176,37 +176,48 @@ exports.handleWebhookFulfillment = async (req, res) => {
                     [referenceNumber, clientName, clientEmail, clientPhone, passwordHash, packageId, billingCycle, startingSmsCredits]
                 );
 
-                const dashboardUrl = "https://fold-go.aesprt.com/admin-dashboard/login";
-                const downloadPageUrl = `https://fold-go.aesprt.com/download/apk`;
-
                 const smsNotificationHtml = startingSmsCredits > 0
                     ? `<p style="color: #10B981;"><strong>Included Perk:</strong> Your account has been provisioned with <strong>${startingSmsCredits.toLocaleString()} complimentary SMS credits</strong>.</p>`
                     : '';
 
-                try {
-                    await mailTransporter.sendMail({
-                        from: `"Fold&Go Operations" <${process.env.EMAIL_USER || process.env.MAIL_USER}>`,
-                        to: clientEmail,
-                        subject: `[Fold&Go] Your Admin Account Credentials`,
-                        html: `<div style="font-family: sans-serif; max-width: 600px; padding: 20px; background: #0F172A; color: #F8FAFC; border-radius:16px;">
-                                <h2>Welcome ${clientName}!</h2>
-                                <p><strong>Username:</strong> ${clientEmail}</p>
-                                <p><strong>Temporary Password:</strong> ${generatedPassword}</p>
-                                ${smsNotificationHtml}
-                                <p><a href="${dashboardUrl}">Go to Dashboard</a> | <a href="${downloadPageUrl}">Download APK Build</a></p>
-                            </div>`
-                    });
-                    console.log(`✅ Registration email successfully dispatched to: ${clientEmail}`);
-                } catch (mailError) {
-                    // Keeps database tracking active even if the SMTP network times out
-                    console.error('❌ SMTP Dispatch Failure:', mailError.message);
-                }
+                // Capture payload out of transaction state bounds
+                emailPayload = {
+                    to: clientEmail,
+                    name: clientName,
+                    password: generatedPassword,
+                    smsHtml: smsNotificationHtml
+                };
             }
+
+            // Commit database changes quickly to unlock tables and avoid webhook time outs
             await pool.query('COMMIT');
+
+            // Dispatch Nodemailer engine asynchronously to ensure immediate 200 OK delivery handshakes
+            if (emailPayload) {
+                const dashboardUrl = "https://fold-go.aesprt.com/admin-dashboard/login";
+                const downloadPageUrl = `https://fold-go.aesprt.com/download/apk`;
+                const emailUser = process.env.EMAIL_USER || process.env.MAIL_USER;
+
+                mailTransporter.sendMail({
+                    from: `"Fold&Go Operations" <${emailUser}>`,
+                    to: emailPayload.to,
+                    subject: `[Fold&Go] Your Admin Account Credentials`,
+                    html: `<div style="font-family: sans-serif; max-width: 600px; padding: 20px; background: #0F172A; color: #F8FAFC; border-radius:16px;">
+                            <h2>Welcome ${emailPayload.name}!</h2>
+                            <p><strong>Username:</strong> ${emailPayload.to}</p>
+                            <p><strong>Temporary Password:</strong> ${emailPayload.password}</p>
+                            ${emailPayload.smsHtml}
+                            <p><a href="${dashboardUrl}">Go to Dashboard</a> | <a href="${downloadPageUrl}">Download APK Build</a></p>
+                           </div>`
+                })
+                    .then(() => console.log(`✅ Registration email successfully dispatched to: ${emailPayload.to}`))
+                    .catch(mailError => console.error('❌ Background SMTP Async Dispatch Failure:', mailError.message));
+            }
+
             return res.status(200).send({ status: 'fulfilled' });
         } catch (dbError) {
             await pool.query('ROLLBACK');
-            console.error('Webhook DB or Mailing execution stalled:', dbError.message || dbError);
+            console.error('Webhook DB Execution Failed:', dbError.message || dbError);
             return res.status(500).send('Pipeline stalled');
         }
     }
