@@ -168,12 +168,15 @@ exports.handleWebhookFulfillment = async (req, res) => {
                     ? `<p style="color: #10B981;"><strong>Included Perk:</strong> Your account has been provisioned with <strong>${startingSmsCredits.toLocaleString()} complimentary SMS credits</strong>.</p>`
                     : '';
 
+                // Generate an operator_id to link shops.owner_id to this operator
+                const operatorId = `OP-${crypto.randomBytes(8).toString('hex')}`;
+
                 emailPayload = {
                     to: clientEmail,
                     name: clientName,
                     password: generatedPassword,
                     smsHtml: smsNotificationHtml,
-                    dbParams: [referenceNumber, clientName, clientEmail, clientPhone, passwordHash, packageId, billingCycle, startingSmsCredits]
+                    dbParams: [operatorId, referenceNumber, clientName, clientEmail, clientPhone, passwordHash, packageId, billingCycle, startingSmsCredits]
                 };
             }
 
@@ -184,11 +187,11 @@ exports.handleWebhookFulfillment = async (req, res) => {
 
             if (txType === 'SAAS' && emailPayload) {
                 await pool.query(
-                    `INSERT INTO fold_go_operators (reference_number, name, email, phone, password_hash, plan_id, billing_cycle, sms_credit_balance)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
-                     ON CONFLICT (email) 
-                     DO UPDATE SET 
-                        password_hash = EXCLUDED.password_hash, 
+                    `INSERT INTO fold_go_operators (operator_id, reference_number, name, email, phone, password_hash, plan_id, billing_cycle, sms_credit_balance)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     ON CONFLICT (email)
+                     DO UPDATE SET
+                        password_hash = EXCLUDED.password_hash,
                         sms_credit_balance = fold_go_operators.sms_credit_balance + EXCLUDED.sms_credit_balance,
                         updated_at = NOW()`,
                     emailPayload.dbParams
