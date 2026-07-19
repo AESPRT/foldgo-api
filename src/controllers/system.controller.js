@@ -51,15 +51,17 @@ exports.loginOperator = async (req, res) => {
 
         const operator = result.rows[0];
 
+        console.log("=== API LOGIN ATTEMPT ===");
+        console.log("Input Password:", password);
+        console.log("Input Password Type:", typeof password);
+        console.log("Stored Hash:", operator.password_hash);
+
         const isMatch = await bcrypt.compare(password, operator.password_hash);
+        console.log("Bcrypt Match Result:", isMatch);
+
         if (!isMatch) {
             return res.status(401).json({ error: "Invalid credentials." });
         }
-
-        console.log('--- LOGIN DEBUG ---');
-        console.log('Incoming Email:', email.trim().toLowerCase());
-        console.log('Incoming Plain Password:', password);
-        console.log('Stored Hash in DB:', operator.password_hash);
 
         // FIX: Mapping operatorId explicitly to email since it serves as the unique identity string
         const token = jwt.sign(
