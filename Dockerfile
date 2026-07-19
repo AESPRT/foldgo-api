@@ -2,14 +2,17 @@ FROM node:22-alpine
 
 WORKDIR /usr/src/app
 
-# 1. Copy ALL your application files into the container first
-COPY . .
+# Copy lockfiles and manifests first for optimized caching layers
+COPY package*.json ./
 
-# 2. Run the API generator on top of the copied workspace
+# Generate the PayMongo SDK source directories
 RUN npx api install "@paymongo/v3#1fzuu181tmdopg9dp"
 
-# 3. Run npm install so it cleanly binds the newly added package maps
+# Perform standard module linkage
 RUN npm install --omit=dev
+
+# Copy the rest of the application files
+COPY . .
 
 EXPOSE 3000
 CMD ["node", "server.js"]

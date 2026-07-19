@@ -4,7 +4,14 @@ const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 
 // Initialize the auto-generated PayMongo v3 SDK client
-const paymongo = require('@paymongo/v3')('@paymongo/v3#1fzuu181tmdopg9dp');
+let paymongo;
+try {
+    // Standard resolution
+    paymongo = require('@paymongo/v3')('@paymongo/v3#1fzuu181tmdopg9dp');
+} catch (e) {
+    // Fallback directly to the absolute generated project path inside the container
+    paymongo = require('/usr/src/app/.api/apis/paymongo/v3')('@paymongo/v3#1fzuu181tmdopg9dp');
+}
 
 // Authenticate with your secret key
 paymongo.auth(process.env.PAYMONGO_SECRET_KEY);
