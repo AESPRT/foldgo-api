@@ -1,6 +1,6 @@
 const pool = require('../config/database');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken'); // Recommended for generating a session token
+const jwt = require('jsonwebtoken');
 
 exports.getSubscriptionState = async (req, res) => {
     const { userId } = req.params;
@@ -9,7 +9,9 @@ exports.getSubscriptionState = async (req, res) => {
         const query = `
             SELECT sms_credit_qty, package_id as plan_name, updated_at as last_update
             FROM fold_and_go_transactions
-            WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1
+            WHERE user_id = $1 
+            ORDER BY created_at DESC 
+            LIMIT 1
         `;
         const result = await pool.query(query, [userId]);
 
@@ -28,7 +30,7 @@ exports.getSubscriptionState = async (req, res) => {
     }
 };
 
-// --- NEW OPERATOR LOGIN ENDPOINT ---
+// --- OPERATOR LOGIN ENDPOINT ---
 exports.loginOperator = async (req, res) => {
     const { email, password } = req.body;
 
@@ -37,7 +39,6 @@ exports.loginOperator = async (req, res) => {
     }
 
     try {
-        // REMOVED: "id" column extraction to match schema.sql structure
         const query = `
             SELECT reference_number, name, email, password_hash, plan_id, billing_cycle, sms_credit_balance 
             FROM fold_go_operators 
@@ -51,19 +52,13 @@ exports.loginOperator = async (req, res) => {
 
         const operator = result.rows[0];
 
-        console.log("=== API LOGIN ATTEMPT ===");
-        console.log("Input Password:", password);
-        console.log("Input Password Type:", typeof password);
-        console.log("Stored Hash:", operator.password_hash);
-
+        // Perform internal hash match checking
         const isMatch = await bcrypt.compare(password, operator.password_hash);
-        console.log("Bcrypt Match Result:", isMatch);
-
         if (!isMatch) {
             return res.status(401).json({ error: "Invalid credentials." });
         }
 
-        // FIX: Mapping operatorId explicitly to email since it serves as the unique identity string
+        // Map operatorId explicitly to the unique email address string identity block
         const token = jwt.sign(
             { operatorId: operator.email, email: operator.email, planId: operator.plan_id },
             process.env.JWT_SECRET || 'fallback_secret_key',
@@ -74,7 +69,7 @@ exports.loginOperator = async (req, res) => {
             message: "Login successful",
             token,
             operator: {
-                id: operator.email, // Satisfies frontend context signature structures using unique email string
+                id: operator.email, // Satisfies enterprise frontend context structures
                 referenceNumber: operator.reference_number,
                 name: operator.name,
                 email: operator.email,
