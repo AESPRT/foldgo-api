@@ -11,4 +11,5 @@ router.post('/shops/login', systemController.shopLogin);
 router.get('/shops/sync', systemController.syncByShop);
 router.post('/shops/upsert', systemController.upsertShopData);
 
+router.delete('/services/:serviceId', systemController.deleteService);
 module.exports = router;

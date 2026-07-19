@@ -295,3 +295,28 @@ exports.loginOperator = async (req, res) => {
         return res.status(500).json({ error: 'Internal system authorization error.' });
     }
 };
+
+exports.deleteService = async (req, res) => {
+    const { serviceId } = req.params;
+    const { shopId } = req.query;
+
+    if (!serviceId || !shopId) {
+        return res.status(400).json({ error: 'serviceId and shopId are required parameters.' });
+    }
+
+    try {
+        const result = await pool.query(
+            `DELETE FROM services WHERE service_id = $1 AND shop_id = $2`,
+            [serviceId, shopId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Service entry not found.' });
+        }
+
+        return res.status(200).json({ message: 'Service completely removed.' });
+    } catch (err) {
+        console.error('Delete service error:', err.message || err);
+        return res.status(500).json({ error: 'Failed to process service deletion.' });
+    }
+};
