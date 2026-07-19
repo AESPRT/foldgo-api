@@ -228,7 +228,7 @@ exports.loginOperator = async (req, res) => {
 
     try {
         const query = `
-            SELECT reference_number, name, email, password_hash, plan_id, billing_cycle, sms_credit_balance 
+            SELECT operator_id, reference_number, name, email, password_hash, plan_id, billing_cycle, sms_credit_balance 
             FROM fold_go_operators 
             WHERE email = $1
         `;
@@ -257,7 +257,7 @@ exports.loginOperator = async (req, res) => {
             message: "Login successful",
             token,
             operator: {
-                id: operator.email, // Satisfies enterprise frontend context structures
+                id: operator.operator_id, // Satisfies enterprise frontend context structures
                 referenceNumber: operator.reference_number,
                 name: operator.name,
                 email: operator.email,
