@@ -84,8 +84,29 @@ exports.shopLogin = async (req, res) => {
 
 // Sync endpoint for a shop: returns configuration + transaction data scoped to shop_id
 exports.syncByShop = async (req, res) => {
-    // Accept shopId from query or derive from bearer token
-    let shopId = req.query.shopId;
+    // 1. Check if the client is asking for ALL shops owned by an operator
+    const { operatorId, shopId: queryShopId } = req.query;
+
+    if (operatorId) {
+        try {
+            // Fetch all shops belonging to this specific operator_id
+            const shopsRes = await pool.query(
+                `SELECT * FROM shops WHERE owner_id = $1 ORDER BY created_at DESC`,
+                [operatorId]
+            );
+
+            // Return an envelope containing the shops array
+            return res.status(200).json({
+                shops: shopsRes.rows
+            });
+        } catch (err) {
+            console.error('Fetch operator shops error:', err.message || err);
+            return res.status(500).json({ error: 'Failed to fetch operator shops.' });
+        }
+    }
+
+    // 2. Fall back to single-shop sync logic if no operatorId is given
+    let shopId = queryShopId;
     const authHeader = req.headers['authorization'] || req.headers['Authorization'];
     if (!shopId && authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.split(' ')[1];
@@ -97,7 +118,9 @@ exports.syncByShop = async (req, res) => {
         }
     }
 
-    if (!shopId) return res.status(400).json({ error: 'shopId required (query or bearer token)' });
+    if (!shopId) {
+        return res.status(400).json({ error: 'shopId or operatorId required' });
+    }
 
     try {
         // Fetch configuration tables scoped by shop_id
