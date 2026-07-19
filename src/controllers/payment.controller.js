@@ -2,19 +2,7 @@ const pool = require('../config/database');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
-
-// Initialize the auto-generated PayMongo v3 SDK client
-let paymongo;
-try {
-    // Standard resolution
-    paymongo = require('@paymongo/v3')('@paymongo/v3#1fzuu181tmdopg9dp');
-} catch (e) {
-    // Fallback directly to the absolute generated project path inside the container
-    paymongo = require('/usr/src/app/.api/apis/paymongo/v3')('@paymongo/v3#1fzuu181tmdopg9dp');
-}
-
-// Authenticate with your secret key
-paymongo.auth(process.env.PAYMONGO_SECRET_KEY);
+const axios = require('axios'); // 1. Use standard axios instead of the flaky SDK wrapper
 
 const mailTransporter = nodemailer.createTransport({
     service: 'gmail',
@@ -81,7 +69,6 @@ exports.createCheckoutSession = async (req, res) => {
     const successRedirectQuery = successUrl ? `&successUrl=${encodeURIComponent(successUrl)}` : '';
     const cancelRedirectQuery = cancelUrl ? `&cancelUrl=${encodeURIComponent(cancelUrl)}` : '';
 
-    // Structure parameters explicitly mapping onto the v3 endpoint architecture
     const payloadData = {
         data: {
             attributes: {
@@ -108,16 +95,21 @@ exports.createCheckoutSession = async (req, res) => {
             [referenceNumber, metadataBlock.user_id, isSaaS ? 0 : parseInt(metadataBlock.sms_credit_qty, 10), (amountInCents / 100), packageId]
         );
 
-        // Native SDK invocation replacing manual global fetch parameters
-        const { data } = await paymongo.createCheckoutSession(payloadData);
+        // 2. Standard Axios request matching the identical PayMongo v3 Session Endpoint API contract
+        const response = await axios.post('https://api.paymongo.com/v3/checkout_sessions', payloadData, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${Buffer.from(process.env.PAYMONGO_SECRET_KEY + ':').toString('base64')}`
+            }
+        });
 
         res.status(200).json({
-            checkoutUrl: data.data.attributes.checkout_url,
+            checkoutUrl: response.data.data.attributes.checkout_url,
             referenceNumber
         });
     } catch (error) {
-        console.error('Checkout error:', error);
-        res.status(500).json({ error: error.message || 'Internal server error' });
+        console.error('Checkout error details:', error.response?.data || error.message);
+        res.status(500).json({ error: error.response?.data?.errors?.[0]?.detail || 'Internal server error' });
     }
 };
 

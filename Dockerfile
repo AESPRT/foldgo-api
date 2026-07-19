@@ -2,16 +2,13 @@ FROM node:22-alpine
 
 WORKDIR /usr/src/app
 
-# Copy lockfiles and manifests first for optimized caching layers
+# Leverage caching for dependencies
 COPY package*.json ./
 
-# Generate the PayMongo SDK source directories
-RUN npx api install "@paymongo/v3#1fzuu181tmdopg9dp"
-
-# Perform standard module linkage
+# Install standard production modules cleanly 
 RUN npm install --omit=dev
 
-# Copy the rest of the application files
+# Copy over the source directories
 COPY . .
 
 EXPOSE 3000
