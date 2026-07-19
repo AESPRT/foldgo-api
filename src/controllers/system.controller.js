@@ -248,7 +248,7 @@ exports.loginOperator = async (req, res) => {
 
         // Map operatorId explicitly to the unique email address string identity block
         const token = jwt.sign(
-            { operatorId: operator.email, email: operator.email, planId: operator.plan_id },
+            { operatorId: operator.operator_id, email: operator.email, planId: operator.plan_id },
             process.env.JWT_SECRET || 'fallback_secret_key',
             { expiresIn: '7d' }
         );
