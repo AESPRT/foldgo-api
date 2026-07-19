@@ -11,6 +11,7 @@ web_modules/
 .env.production.local
 *.pem
 *.key
+.api
 
 # Operating System files
 .DS_Store

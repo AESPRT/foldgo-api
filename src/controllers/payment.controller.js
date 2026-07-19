@@ -3,6 +3,12 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 
+// Initialize the auto-generated PayMongo v3 SDK client
+const paymongo = require('@paymongo/v3')('@paymongo/v3#1fzuu181tmdopg9dp');
+
+// Authenticate with your secret key
+paymongo.auth(process.env.PAYMONGO_SECRET_KEY);
+
 const mailTransporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -10,11 +16,6 @@ const mailTransporter = nodemailer.createTransport({
         pass: process.env.EMAIL_PASS
     }
 });
-
-const getAuthHeader = () => {
-    const credentials = Buffer.from(`${process.env.PAYMONGO_SECRET_KEY}:`).toString('base64');
-    return `Basic ${credentials}`;
-};
 
 const PLAN_LIMITS = {
     'plan-basic': { name: 'Standard Hub', monthlyPrice: 1499, annuallyPricePerMonth: 1199 },
@@ -73,7 +74,8 @@ exports.createCheckoutSession = async (req, res) => {
     const successRedirectQuery = successUrl ? `&successUrl=${encodeURIComponent(successUrl)}` : '';
     const cancelRedirectQuery = cancelUrl ? `&cancelUrl=${encodeURIComponent(cancelUrl)}` : '';
 
-    const payload = {
+    // Structure parameters explicitly mapping onto the v3 endpoint architecture
+    const payloadData = {
         data: {
             attributes: {
                 billing: { email: cusEmail || "", name: cusName || "", phone: cusPhone || "" },
@@ -92,25 +94,20 @@ exports.createCheckoutSession = async (req, res) => {
     };
 
     try {
+        // Log transaction pending state locally
         await pool.query(
             `INSERT INTO fold_and_go_transactions (reference_number, user_id, sms_credit_qty, amount, payment_status, package_id) 
              VALUES ($1, $2, $3, $4, 'PENDING', $5)`,
             [referenceNumber, metadataBlock.user_id, isSaaS ? 0 : parseInt(metadataBlock.sms_credit_qty, 10), (amountInCents / 100), packageId]
         );
 
-        const response = await fetch('https://api.paymongo.com/v2/checkout_sessions', {
-            method: 'POST',
-            headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+        // Native SDK invocation replacing manual global fetch parameters
+        const { data } = await paymongo.createCheckoutSession(payloadData);
+
+        res.status(200).json({
+            checkoutUrl: data.data.attributes.checkout_url,
+            referenceNumber
         });
-
-        if (!response.ok) {
-            const errorResult = await response.json().catch(() => ({}));
-            throw new Error(errorResult.errors?.[0]?.detail || `Status ${response.status}`);
-        }
-
-        const result = await response.json();
-        res.status(200).json({ checkoutUrl: result.data.attributes.checkout_url, referenceNumber });
     } catch (error) {
         console.error('Checkout error:', error);
         res.status(500).json({ error: error.message || 'Internal server error' });
@@ -153,18 +150,32 @@ exports.handleWebhookFulfillment = async (req, res) => {
                 const clientName = sessionObj.billing?.name || "FoldGo Partner";
                 const clientPhone = sessionObj.billing?.phone || "";
 
+                // Determine dynamic SMS allotment based on the subscribed package tier
+                // Premium gets a baseline bundle, Basic tier gets none out-of-the-box
+                const startingSmsCredits = packageId === 'plan-premium' ? 1500 : 0;
+
                 const generatedPassword = crypto.randomBytes(6).toString('hex') + '!Fg';
                 const passwordHash = await bcrypt.hash(generatedPassword, 12);
 
+                // Added sms_credit_balance configuration column to match the tier requirement
                 await pool.query(
-                    `INSERT INTO fold_go_operators (reference_number, name, email, phone, password_hash, plan_id, billing_cycle)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = NOW()`,
-                    [referenceNumber, clientName, clientEmail, clientPhone, passwordHash, packageId, billingCycle]
+                    `INSERT INTO fold_go_operators (reference_number, name, email, phone, password_hash, plan_id, billing_cycle, sms_credit_balance)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+                     ON CONFLICT (email) 
+                     DO UPDATE SET 
+                        password_hash = EXCLUDED.password_hash, 
+                        sms_credit_balance = fold_go_operators.sms_credit_balance + EXCLUDED.sms_credit_balance,
+                        updated_at = NOW()`,
+                    [referenceNumber, clientName, clientEmail, clientPhone, passwordHash, packageId, billingCycle, startingSmsCredits]
                 );
 
                 const dashboardUrl = "https://fold-go.aesprt.com/admin-dashboard";
-                const sessionToken = sessionObj.metadata.session_token || "";
                 const downloadPageUrl = `https://fold-go.aesprt.com/download/apk`;
+
+                // Add a dynamic notification snippet within the fulfillment notification email
+                const smsNotificationHtml = startingSmsCredits > 0
+                    ? `<p style="color: #10B981;"><strong>Included Perk:</strong> Your account has been provisioned with <strong>${startingSmsCredits.toLocaleString()} complimentary SMS credits</strong>.</p>`
+                    : '';
 
                 await mailTransporter.sendMail({
                     from: `"Fold&Go Operations" <${process.env.EMAIL_USER}>`,
@@ -174,6 +185,7 @@ exports.handleWebhookFulfillment = async (req, res) => {
                             <h2>Welcome ${clientName}!</h2>
                             <p><strong>Username:</strong> ${clientEmail}</p>
                             <p><strong>Temporary Password:</strong> ${generatedPassword}</p>
+                            ${smsNotificationHtml}
                             <p><a href="${dashboardUrl}">Go to Dashboard</a> | <a href="${downloadPageUrl}">Download APK Build</a></p>
                            </div>`
                 });
@@ -182,13 +194,14 @@ exports.handleWebhookFulfillment = async (req, res) => {
             return res.status(200).send({ status: 'fulfilled' });
         } catch (dbError) {
             await pool.query('ROLLBACK');
+            console.error('Webhook DB error:', dbError);
             return res.status(500).send('Pipeline stalled');
         }
     }
     res.status(400).send('Unhandled Event');
 };
 
-exports.verifyOnboardingToken = async (req, res) => {
+exports.verifyDashboardToken = async (req, res) => {
     const { referenceNumber } = req.query;
     try {
         const query = `
