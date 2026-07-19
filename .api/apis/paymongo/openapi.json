@@ -1,0 +1,226 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "version": "1.0.0",
+    "title": "Money Movement API"
+  },
+  "servers": [
+    {
+      "url": "https://idla82aae3.execute-api.ap-southeast-1.amazonaws.com/v1"
+    }
+  ],
+  "tags": [],
+  "paths": {
+    "/rules": {
+      "get": {
+        "description": "",
+        "operationId": "head_event",
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "parameters": [],
+        "security": [
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "post": {
+        "description": "",
+        "operationId": "get_event",
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "parameters": [],
+        "security": [
+          {
+            "BasicAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "rule": {
+                    "type": "string"
+                  },
+                  "rule_action": {
+                    "type": "string"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "rule"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{id}": {
+      "get": {
+        "description": "",
+        "operationId": "get_rules{id}",
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/putEvent": {
+      "post": {
+        "description": "",
+        "operationId": "post_putEvent",
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "parameters": [],
+        "security": [
+          {
+            "BasicAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "event": {
+                    "type": "string"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "event"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflow": {
+      "post": {
+        "description": "",
+        "operationId": "post_workflow",
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "parameters": [],
+        "security": [
+          {
+            "BasicAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "handle": {
+                    "type": "string"
+                  },
+                  "workflow_definition": {
+                    "type": "string",
+                    "description": "Base64 encoded version of workflow YAML definition"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "name",
+                  "handle",
+                  "workflow_definition"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "description": "",
+        "operationId": "put_workflow",
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/events": {
+      "post": {
+        "description": "",
+        "operationId": "post_events",
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "parameters": [],
+        "security": [
+          {
+            "BasicAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "rule": {
+                    "type": "string",
+                    "default": ""
+                  },
+                  "rule_action": {
+                    "type": "string"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "rule"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BasicAuth": {
+        "type": "http",
+        "scheme": "basic"
+      }
+    }
+  }
+}
