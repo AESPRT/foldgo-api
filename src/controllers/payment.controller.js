@@ -203,7 +203,7 @@ exports.handleWebhookFulfillment = async (req, res) => {
             // 5. RUN NODEMAILER IN BACKGROUND COMPLETELY SEPARATED FROM RESPONSE LIFECYCLE
             if (txType === 'SAAS' && emailPayload) {
                 const dashboardUrl = "https://fold-go.aesprt.com/admin-dashboard/login";
-                const downloadPageUrl = `https://fold-go.aesprt.com/download/apk`;
+                const downloadPageUrl = `https://fold-go.aesprt.com/download/apk?referenceNumber=${encodeURIComponent(referenceNumber)}`;
                 const emailUser = process.env.EMAIL_USER || process.env.MAIL_USER;
 
                 mailTransporter.sendMail({
