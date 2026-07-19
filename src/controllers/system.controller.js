@@ -37,9 +37,9 @@ exports.loginOperator = async (req, res) => {
     }
 
     try {
-        // 1. Look up the operator record by email
+        // REMOVED: "id" column extraction to match schema.sql structure
         const query = `
-            SELECT id, reference_number, name, email, password_hash, plan_id, billing_cycle, sms_credit_balance 
+            SELECT reference_number, name, email, password_hash, plan_id, billing_cycle, sms_credit_balance 
             FROM fold_go_operators 
             WHERE email = $1
         `;
@@ -51,26 +51,23 @@ exports.loginOperator = async (req, res) => {
 
         const operator = result.rows[0];
 
-        // 2. Safely verify the submitted raw password against the stored bcrypt hash
         const isMatch = await bcrypt.compare(password, operator.password_hash);
         if (!isMatch) {
             return res.status(401).json({ error: "Invalid credentials." });
         }
 
-        // 3. Optional: Generate a secure JWT token for session state management
-        // (Make sure PROCESS.ENV.JWT_SECRET is defined in your environment)
+        // FIX: Mapping operatorId explicitly to email since it serves as the unique identity string
         const token = jwt.sign(
-            { operatorId: operator.id, email: operator.email, planId: operator.plan_id },
+            { operatorId: operator.email, email: operator.email, planId: operator.plan_id },
             process.env.JWT_SECRET || 'fallback_secret_key',
             { expiresIn: '7d' }
         );
 
-        // 4. Return the operator profile payload to launch dashboard operations
         return res.status(200).json({
             message: "Login successful",
             token,
             operator: {
-                id: operator.id,
+                id: operator.email, // Satisfies frontend context signature structures using unique email string
                 referenceNumber: operator.reference_number,
                 name: operator.name,
                 email: operator.email,
