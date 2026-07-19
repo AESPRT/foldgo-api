@@ -4,19 +4,16 @@ const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 const axios = require('axios');
 
-// FIX: Upgraded from fragile 'service: gmail' to direct secure SMTP configuration
+// REMOVED: Static global evaluation. Moved directly into the transport closure.
 const mailTransporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
-    secure: true, // Forces SSL/TLS connection profiles explicitly
+    secure: true,
     auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS // Must be a 16-character Google App Password
+        get user() { return process.env.EMAIL_USER || process.env.MAIL_USER; },
+        get pass() { return process.env.EMAIL_PASS || process.env.MAIL_PASS; }
     },
-    tls: {
-        // Prevents environment internal routing restrictions or container firewalls from stalling out
-        rejectUnauthorized: false
-    }
+    tls: { rejectUnauthorized: false }
 });
 
 const PLAN_LIMITS = {
@@ -51,7 +48,11 @@ exports.createCheckoutSession = async (req, res) => {
             billing_cycle: cycle || "MONTHLY",
             session_token: sessionToken || "",
             success_url: successUrl || "",
-            cancel_url: cancelUrl || ""
+            cancel_url: cancelUrl || "",
+            // FIX: Explicitly passing backup fields into metadata because PayMongo 
+            // sometimes replaces the primary billing block during e-wallet flows.
+            customer_email: cusEmail || "",
+            customer_name: cusName || "FoldGo Partner"
         };
     } else {
         let finalSmsQty = smsQty ? parseInt(smsQty, 10) : 1000;
@@ -101,7 +102,6 @@ exports.createCheckoutSession = async (req, res) => {
             [referenceNumber, metadataBlock.user_id, isSaaS ? 0 : parseInt(metadataBlock.sms_credit_qty, 10), (amountInCents / 100), packageId]
         );
 
-        // API Endpoint version mapped securely via standard payload config
         const response = await axios.post('https://api.paymongo.com/v1/checkout_sessions', payloadData, {
             headers: {
                 'Content-Type': 'application/json',
@@ -151,12 +151,17 @@ exports.handleWebhookFulfillment = async (req, res) => {
             if (txType === 'SAAS') {
                 const packageId = sessionObj.metadata.package_id;
                 const billingCycle = sessionObj.metadata.billing_cycle;
-                const clientEmail = sessionObj.billing?.email || "";
-                const clientName = sessionObj.billing?.name || "FoldGo Partner";
+
+                // FIX: Fallback sequence targeting metadata directly to protect against missing billing payloads
+                const clientEmail = sessionObj.billing?.email || sessionObj.metadata?.customer_email || "";
+                const clientName = sessionObj.billing?.name || sessionObj.metadata?.customer_name || "FoldGo Partner";
                 const clientPhone = sessionObj.billing?.phone || "";
 
-                const startingSmsCredits = packageId === 'plan-premium' ? 1500 : 0;
+                if (!clientEmail) {
+                    throw new Error("Target customer email resolved to empty state. Skipping registration email pipeline.");
+                }
 
+                const startingSmsCredits = packageId === 'plan-premium' ? 1500 : 0;
                 const generatedPassword = crypto.randomBytes(6).toString('hex') + '!Fg';
                 const passwordHash = await bcrypt.hash(generatedPassword, 12);
 
@@ -171,14 +176,13 @@ exports.handleWebhookFulfillment = async (req, res) => {
                     [referenceNumber, clientName, clientEmail, clientPhone, passwordHash, packageId, billingCycle, startingSmsCredits]
                 );
 
-                const dashboardUrl = "https://fold-go.aesprt.com/admin-dashboard";
+                const dashboardUrl = "https://fold-go.aesprt.com/admin-dashboard/login";
                 const downloadPageUrl = `https://fold-go.aesprt.com/download/apk`;
 
                 const smsNotificationHtml = startingSmsCredits > 0
                     ? `<p style="color: #10B981;"><strong>Included Perk:</strong> Your account has been provisioned with <strong>${startingSmsCredits.toLocaleString()} complimentary SMS credits</strong>.</p>`
                     : '';
 
-                // FIX: Awaited email transmission so execution doesn't cut out before SMTP confirmation completes
                 await mailTransporter.sendMail({
                     from: `"Fold&Go Operations" <${process.env.EMAIL_USER}>`,
                     to: clientEmail,
@@ -196,7 +200,7 @@ exports.handleWebhookFulfillment = async (req, res) => {
             return res.status(200).send({ status: 'fulfilled' });
         } catch (dbError) {
             await pool.query('ROLLBACK');
-            console.error('Webhook DB or Mailing execution stalled:', dbError);
+            console.error('Webhook DB or Mailing execution stalled:', dbError.message || dbError);
             return res.status(500).send('Pipeline stalled');
         }
     }
