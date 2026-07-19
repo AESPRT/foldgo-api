@@ -183,18 +183,24 @@ exports.handleWebhookFulfillment = async (req, res) => {
                     ? `<p style="color: #10B981;"><strong>Included Perk:</strong> Your account has been provisioned with <strong>${startingSmsCredits.toLocaleString()} complimentary SMS credits</strong>.</p>`
                     : '';
 
-                await mailTransporter.sendMail({
-                    from: `"Fold&Go Operations" <${process.env.EMAIL_USER}>`,
-                    to: clientEmail,
-                    subject: `[Fold&Go] Your Admin Account Credentials`,
-                    html: `<div style="font-family: sans-serif; max-width: 600px; padding: 20px; background: #0F172A; color: #F8FAFC; border-radius:16px;">
-                            <h2>Welcome ${clientName}!</h2>
-                            <p><strong>Username:</strong> ${clientEmail}</p>
-                            <p><strong>Temporary Password:</strong> ${generatedPassword}</p>
-                            ${smsNotificationHtml}
-                            <p><a href="${dashboardUrl}">Go to Dashboard</a> | <a href="${downloadPageUrl}">Download APK Build</a></p>
-                           </div>`
-                });
+                try {
+                    await mailTransporter.sendMail({
+                        from: `"Fold&Go Operations" <${process.env.EMAIL_USER || process.env.MAIL_USER}>`,
+                        to: clientEmail,
+                        subject: `[Fold&Go] Your Admin Account Credentials`,
+                        html: `<div style="font-family: sans-serif; max-width: 600px; padding: 20px; background: #0F172A; color: #F8FAFC; border-radius:16px;">
+                                <h2>Welcome ${clientName}!</h2>
+                                <p><strong>Username:</strong> ${clientEmail}</p>
+                                <p><strong>Temporary Password:</strong> ${generatedPassword}</p>
+                                ${smsNotificationHtml}
+                                <p><a href="${dashboardUrl}">Go to Dashboard</a> | <a href="${downloadPageUrl}">Download APK Build</a></p>
+                            </div>`
+                    });
+                    console.log(`✅ Registration email successfully dispatched to: ${clientEmail}`);
+                } catch (mailError) {
+                    // Keeps database tracking active even if the SMTP network times out
+                    console.error('❌ SMTP Dispatch Failure:', mailError.message);
+                }
             }
             await pool.query('COMMIT');
             return res.status(200).send({ status: 'fulfilled' });
