@@ -199,6 +199,26 @@ CREATE TABLE sync_outbox (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+DROP TABLE IF EXISTS rental_subscriptions CASCADE;
+
+CREATE TABLE rental_subscriptions (
+    subscription_id VARCHAR(255) PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL, -- ID ng may-ari o operator ng paupahan
+    package_id VARCHAR(100) NOT NULL, -- e.g., 'panimula', 'bahay_upa', 'maalam', 'negosyante', 'custom'
+    billing_cycle VARCHAR(50) DEFAULT 'MONTHLY', -- 'MONTHLY' o 'ANNUAL'
+    status VARCHAR(50) DEFAULT 'PENDING', -- 'PENDING', 'ACTIVE', 'EXPIRED', 'CANCELLED'
+    reference_number VARCHAR(255) REFERENCES fold_and_go_transactions (reference_number) ON DELETE SET NULL,
+    amount_paid DECIMAL(12, 2) DEFAULT 0,
+    expires_at TIMESTAMP, -- Kailangang malaman kung kailan magtatapos ang subscription
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index para mabilis makuha ng front-end ang status gamit ang user_id
+CREATE INDEX idx_rental_subscriptions_user ON rental_subscriptions (user_id);
+
+CREATE INDEX idx_rental_subscriptions_ref ON rental_subscriptions (reference_number);
+
 -- Indexes for new tables
 CREATE INDEX idx_shops_owner ON shops (owner_id);
 
