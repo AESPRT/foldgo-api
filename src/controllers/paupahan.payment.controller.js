@@ -197,14 +197,24 @@ exports.getUserSubscription = async (req, res) => {
 
 exports.renderSuccessPage = async (req, res) => {
     const { ref, successUrl } = req.query;
-    if (ref && ref.startsWith('TXN-RENTAL-') && successUrl) {
-        const redirectUrl = successUrl.includes('?')
-            ? `${successUrl}&referenceNumber=${encodeURIComponent(ref)}`
-            : `${successUrl}?referenceNumber=${encodeURIComponent(ref)}`;
-        return res.redirect(redirectUrl);
+
+    // Kunin ang package_id mula sa reference kung gusto mo o i-redirect pabalik sa app
+    if (ref && ref.startsWith('TXN-RENTAL-')) {
+        // Kung may ibinigay na successUrl mula sa frontend, gamitin ito at idagdag ang ref
+        const targetUrl = successUrl || `${req.protocol}://${req.get('host')}/admin/register`;
+        const separator = targetUrl.includes('?') ? '&' : '?';
+        return res.redirect(`${targetUrl}${separator}referenceNumber=${encodeURIComponent(ref)}&success=true`);
     }
 
-    res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✓ Payment Successful</h1><p>Reference: ${ref}</p></body></html>`);
+    res.send(`
+        <html>
+            <body style="background:#0F172A;color:white;text-align:center;padding:50px;font-family:sans-serif;">
+                <h1>✓ Tagumpay ang Pagbabayad!</h1>
+                <p>Reference Number: <b>${ref}</b></p>
+                <p>Maaari mo nang isara ang window na ito o magpatuloy sa paggawa ng account.</p>
+            </body>
+        </html>
+    `);
 };
 
 exports.renderCancelPage = async (req, res) => {
