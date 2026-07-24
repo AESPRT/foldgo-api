@@ -16,7 +16,7 @@ const allowedOrigins = [
     'https://api.aesprt.com',      // API domain fallback
     'http://localhost:3060',       // Your landing page Docker host port configuration
     'http://localhost:3000',        // Standard local development port
-    'https://paupahan.aesprt.com/'
+    'https://paupahan.aesprt.com'
 ];
 
 app.use(cors({
