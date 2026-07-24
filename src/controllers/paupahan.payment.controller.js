@@ -53,7 +53,12 @@ exports.createCheckoutSession = async (req, res) => {
     const protocol = req.protocol;
     const baseUrl = `${protocol}://${host}`;
 
-    const successRedirectQuery = successUrl ? `&successUrl=${encodeURIComponent(successUrl)}` : '';
+    // Ibinubukas natin ang successUrl at isasama ang customer info bilang query parameters
+    let successRedirectQuery = successUrl ? `&successUrl=${encodeURIComponent(successUrl)}` : '';
+    if (cusName) successRedirectQuery += `&name=${encodeURIComponent(cusName)}`;
+    if (cusEmail) successRedirectQuery += `&email=${encodeURIComponent(cusEmail)}`;
+    if (cusPhone) successRedirectQuery += `&phone=${encodeURIComponent(cusPhone)}`;
+
     const cancelRedirectQuery = cancelUrl ? `&cancelUrl=${encodeURIComponent(cancelUrl)}` : '';
 
     const payloadData = {
@@ -67,7 +72,6 @@ exports.createCheckoutSession = async (req, res) => {
                 send_email_receipt: true,
                 show_description: true,
                 show_line_items: true,
-                // ITAMA ANG PATH: Ginawang /v1/paupahan-payments/redirect/success
                 cancel_url: `${baseUrl}/v1/paupahan-payments/redirect/cancel?ref=${referenceNumber}${cancelRedirectQuery}`,
                 success_url: `${baseUrl}/v1/paupahan-payments/redirect/success?ref=${referenceNumber}${successRedirectQuery}`,
                 description: `Subscription activation for ${plan.displayName}`,
@@ -182,10 +186,9 @@ exports.getUserSubscription = async (req, res) => {
 };
 
 exports.renderSuccessPage = async (req, res) => {
-    const { ref, successUrl } = req.query;
+    const { ref, successUrl, name, email, phone } = req.query;
 
     if (ref && ref.startsWith('TXN-RENTAL-')) {
-        // I-decode ang successUrl kung meron man para mabasa nang tama ang localhost/domain at query params
         let targetUrl = `${req.protocol}://${req.get('host')}/admin/register`;
 
         if (successUrl) {
@@ -193,7 +196,14 @@ exports.renderSuccessPage = async (req, res) => {
         }
 
         const separator = targetUrl.includes('?') ? '&' : '?';
-        return res.redirect(`${targetUrl}${separator}referenceNumber=${encodeURIComponent(ref)}&success=true`);
+
+        // Ipinapasa natin ang referenceNumber pati na ang name, email, at phone patungo sa frontend registration page
+        let redirectParams = `${separator}referenceNumber=${encodeURIComponent(ref)}&success=true`;
+        if (name) redirectParams += `&name=${encodeURIComponent(name)}`;
+        if (email) redirectParams += `&email=${encodeURIComponent(email)}`;
+        if (phone) redirectParams += `&phone=${encodeURIComponent(phone)}`;
+
+        return res.redirect(`${targetUrl}${redirectParams}`);
     }
 
     res.send(`
