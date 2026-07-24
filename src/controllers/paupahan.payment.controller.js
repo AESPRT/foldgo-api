@@ -10,11 +10,10 @@ const RENTAL_PLANS_BACKEND = {
 };
 
 exports.createCheckoutSession = async (req, res) => {
-    // Kunin ang mga data mula sa request body ng frontend ng paupahan
     const {
         userId,
-        packageId,       // "panimula", "bahay_upa", "maalam", "negosyante", "custom"
-        cycle,           // "MONTHLY" o "ANNUAL"
+        packageId,
+        cycle,
         successUrl,
         cancelUrl,
         cusEmail,
@@ -36,7 +35,7 @@ exports.createCheckoutSession = async (req, res) => {
     }
 
     const isAnnual = cycle === 'ANNUAL';
-    const rawPrice = isAnnual ? (plan.monthlyPrice * 12 * 0.85) : plan.monthlyPrice; // 15% discount kung annual, o alisin ang * 0.85 kung saktong 12 months
+    const rawPrice = isAnnual ? (plan.monthlyPrice * 12 * 0.85) : plan.monthlyPrice;
     const amountInCents = Math.round(rawPrice * 100);
     const referenceNumber = `TXN-RENTAL-${Date.now()}`;
     const lineItemName = `Paupahan System - ${plan.displayName} Plan (${isAnnual ? 'Taunan / Annual' : 'Buwanan / Monthly'})`;
@@ -68,8 +67,9 @@ exports.createCheckoutSession = async (req, res) => {
                 send_email_receipt: true,
                 show_description: true,
                 show_line_items: true,
-                cancel_url: `${baseUrl}/v1/payments/redirect/cancel?ref=${referenceNumber}${cancelRedirectQuery}`,
-                success_url: `${baseUrl}/v1/payments/redirect/success?ref=${referenceNumber}${successRedirectQuery}`,
+                // ITAMA ANG PATH: Ginawang /v1/paupahan-payments/redirect/success
+                cancel_url: `${baseUrl}/v1/paupahan-payments/redirect/cancel?ref=${referenceNumber}${cancelRedirectQuery}`,
+                success_url: `${baseUrl}/v1/paupahan-payments/redirect/success?ref=${referenceNumber}${successRedirectQuery}`,
                 description: `Subscription activation for ${plan.displayName}`,
                 line_items: [{
                     amount: amountInCents,
@@ -113,23 +113,16 @@ exports.handlePayMongoWebhook = async (req, res) => {
     try {
         const eventType = event?.data?.attributes?.type;
 
-        // Siguraduhing galing sa PayMongo ang event at ito ay 'checkout_session.payment.paid'
         if (eventType === 'checkout_session.payment.paid') {
             const checkoutSession = event.data.attributes.data;
             const attributes = checkoutSession.attributes;
             const metadata = attributes.metadata;
 
             const referenceNumber = attributes.reference_number;
-            const paymentIntentId = attributes.payment_intent_id;
             const amountPaidInCents = attributes.amount_paid || attributes.payments?.[0]?.attributes?.amount || 0;
             const amountPaid = amountPaidInCents / 100;
-
-            // Kunin ang mga impormasyon mula sa metadata na ipinasa natin noong gumawa ng checkout session
             const { user_id, package_id, billing_cycle } = metadata;
 
-            console.log(`Payment successful! Reference: ${referenceNumber}, User: ${user_id}, Package: ${package_id}`);
-
-            // 1. I-save muna ang transaction record sa fold_and_go_transactions (kung kailangan)
             await pool.query(
                 `INSERT INTO fold_and_go_transactions (reference_number, user_id, amount, payment_status, package_id) 
                  VALUES ($1, $2, $3, 'SUCCESS', $4)
@@ -137,15 +130,12 @@ exports.handlePayMongoWebhook = async (req, res) => {
                 [referenceNumber, user_id, amountPaid, package_id]
             );
 
-            // 2. Kalkulahin ang expiration date (1 buwan kung MONTHLY, 12 buwan kung ANNUAL)
             const durationMonths = billing_cycle === 'ANNUAL' ? 12 : 1;
             const expiresAt = new Date();
             expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
 
             const subscriptionId = `SUB-${Date.now()}`;
 
-            // 3. I-save o i-update ang rental_subscriptions table sa database
-            // Sinisigurong mapapalitan o mau-update ang active subscription ng user
             await pool.query(
                 `INSERT INTO rental_subscriptions (subscription_id, user_id, package_id, billing_cycle, status, reference_number, amount_paid, expires_at, updated_at) 
                  VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $7, CURRENT_TIMESTAMP)
@@ -159,11 +149,8 @@ exports.handlePayMongoWebhook = async (req, res) => {
                      updated_at = CURRENT_TIMESTAMP`,
                 [subscriptionId, user_id, package_id, billing_cycle, referenceNumber, amountPaid, expiresAt]
             );
-
-            console.log(`Subscription for user ${user_id} successfully updated to ${package_id} (${billing_cycle})`);
         }
 
-        // Laging mag-respond ng 200 OK sa PayMongo para hindi sila mag-retry ng webhook
         res.status(200).json({ received: true });
 
     } catch (error) {
@@ -176,7 +163,6 @@ exports.getUserSubscription = async (req, res) => {
     const { userId } = req.query;
 
     try {
-        // Kunin sa database ang aktibong subscription ng user
         const result = await pool.query(
             `SELECT * FROM rental_subscriptions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
             [userId]
@@ -198,10 +184,14 @@ exports.getUserSubscription = async (req, res) => {
 exports.renderSuccessPage = async (req, res) => {
     const { ref, successUrl } = req.query;
 
-    // Kunin ang package_id mula sa reference kung gusto mo o i-redirect pabalik sa app
     if (ref && ref.startsWith('TXN-RENTAL-')) {
-        // Kung may ibinigay na successUrl mula sa frontend, gamitin ito at idagdag ang ref
-        const targetUrl = successUrl || `${req.protocol}://${req.get('host')}/admin/register`;
+        // I-decode ang successUrl kung meron man para mabasa nang tama ang localhost/domain at query params
+        let targetUrl = `${req.protocol}://${req.get('host')}/admin/register`;
+
+        if (successUrl) {
+            targetUrl = decodeURIComponent(successUrl);
+        }
+
         const separator = targetUrl.includes('?') ? '&' : '?';
         return res.redirect(`${targetUrl}${separator}referenceNumber=${encodeURIComponent(ref)}&success=true`);
     }
