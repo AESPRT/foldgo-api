@@ -160,12 +160,12 @@ exports.handlePayMongoWebhook = async (req, res) => {
 };
 
 exports.getUserSubscription = async (req, res) => {
-    const { userId } = req.query;
+    const { referenceNumber } = req.query;
 
     try {
         const result = await pool.query(
-            `SELECT * FROM rental_subscriptions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
-            [userId]
+            `SELECT * FROM rental_subscriptions WHERE reference_number = $1 ORDER BY created_at DESC LIMIT 1`,
+            [referenceNumber]
         );
 
         if (result.rows.length === 0) {
