@@ -4,6 +4,7 @@ require('dotenv').config();
 
 const systemRoutes = require('./src/routes/system.routes');
 const paymentRoutes = require('./src/routes/payment.routes');
+const paupahanPaymentRoutes = require('./src/routes/paupahan.payment.routes');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -55,7 +56,7 @@ app.get('/', (req, res) => {
 // Mount Separated Application Modules
 app.use('/v1/laundry', systemRoutes);
 app.use('/v1/payments', paymentRoutes);
-
+app.use('/v1/paupahan-payments', paupahanPaymentRoutes);
 app.listen(port, () => {
     console.log(`🚀 Fold&Go cluster online and listening on port ${port}`);
 });
