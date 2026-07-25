@@ -1,4 +1,5 @@
 const axios = require('axios');
+const nodemailer = require('nodemailer');
 
 // Backend copy ng iyong mga plano para mag-match sa Prisma enum at paupahan system
 const RENTAL_PLANS_BACKEND = {
