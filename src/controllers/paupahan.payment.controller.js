@@ -52,6 +52,7 @@ exports.createCheckoutSession = async (req, res) => {
     const referenceNumber = `TXN-RENTAL-${Date.now()}`;
     const lineItemName = `Paupahan System - ${plan.displayName} Plan (${isAnnual ? 'Taunan / Annual' : 'Buwanan / Monthly'})`;
 
+    // Mahalaga ang metadata na ito para mabasa ng webhook sa mga susunod na auto-renew
     const metadataBlock = {
         user_id: userId,
         type: "RENTAL_SUBSCRIPTION",
@@ -65,7 +66,6 @@ exports.createCheckoutSession = async (req, res) => {
     const protocol = req.protocol;
     const baseUrl = `${protocol}://${host}`;
 
-    // Ibinubukas natin ang successUrl at isasama ang customer info bilang query parameters
     let successRedirectQuery = successUrl ? `&successUrl=${encodeURIComponent(successUrl)}` : '';
     if (cusName) successRedirectQuery += `&name=${encodeURIComponent(cusName)}`;
     if (cusEmail) successRedirectQuery += `&email=${encodeURIComponent(cusEmail)}`;
@@ -128,43 +128,87 @@ exports.handlePayMongoWebhook = async (req, res) => {
 
     try {
         const eventType = event?.data?.attributes?.type;
+        const eventData = event?.data?.attributes?.data;
 
+        // 1. UNANG BAYAD: Kapag natapos na ang initial checkout session
         if (eventType === 'checkout_session.payment.paid') {
-            const checkoutSession = event.data.attributes.data;
-            const attributes = checkoutSession.attributes;
-            const metadata = attributes.metadata;
-
+            const attributes = eventData.attributes;
+            const metadata = attributes.metadata || {};
             const referenceNumber = attributes.reference_number;
             const amountPaidInCents = attributes.amount_paid || attributes.payments?.[0]?.attributes?.amount || 0;
             const amountPaid = amountPaidInCents / 100;
             const { user_id, package_id, billing_cycle } = metadata;
 
-            await pool.query(
-                `INSERT INTO fold_and_go_transactions (reference_number, user_id, amount, payment_status, package_id) 
-                 VALUES ($1, $2, $3, 'SUCCESS', $4)
-                 ON CONFLICT (reference_number) DO UPDATE SET payment_status = 'SUCCESS'`,
-                [referenceNumber, user_id, amountPaid, package_id]
-            );
+            if (user_id) {
+                await pool.query(
+                    `INSERT INTO fold_and_go_transactions (reference_number, user_id, amount, payment_status, package_id) 
+                     VALUES ($1, $2, $3, 'SUCCESS', $4)
+                     ON CONFLICT (reference_number) DO UPDATE SET payment_status = 'SUCCESS'`,
+                    [referenceNumber, user_id, amountPaid, package_id]
+                );
 
-            const durationMonths = billing_cycle === 'ANNUAL' ? 12 : 1;
-            const expiresAt = new Date();
-            expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
+                const durationMonths = billing_cycle === 'ANNUAL' ? 12 : 1;
+                const expiresAt = new Date();
+                expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
 
-            const subscriptionId = `SUB-${Date.now()}`;
+                const subscriptionId = `SUB-${Date.now()}`;
 
-            await pool.query(
-                `INSERT INTO rental_subscriptions (subscription_id, user_id, package_id, billing_cycle, status, reference_number, amount_paid, expires_at, updated_at) 
-                 VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $7, CURRENT_TIMESTAMP)
-                 ON CONFLICT (user_id) DO UPDATE 
-                 SET package_id = EXCLUDED.package_id,
-                     billing_cycle = EXCLUDED.billing_cycle,
-                     status = 'ACTIVE',
-                     reference_number = EXCLUDED.reference_number,
-                     amount_paid = EXCLUDED.amount_paid,
-                     expires_at = EXCLUDED.expires_at,
-                     updated_at = CURRENT_TIMESTAMP`,
-                [subscriptionId, user_id, package_id, billing_cycle, referenceNumber, amountPaid, expiresAt]
-            );
+                await pool.query(
+                    `INSERT INTO rental_subscriptions (subscription_id, user_id, package_id, billing_cycle, status, reference_number, amount_paid, expires_at, updated_at) 
+                     VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $7, CURRENT_TIMESTAMP)
+                     ON CONFLICT (user_id) DO UPDATE 
+                     SET package_id = EXCLUDED.package_id,
+                         billing_cycle = EXCLUDED.billing_cycle,
+                         status = 'ACTIVE',
+                         reference_number = EXCLUDED.reference_number,
+                         amount_paid = EXCLUDED.amount_paid,
+                         expires_at = EXCLUDED.expires_at,
+                         updated_at = CURRENT_TIMESTAMP`,
+                    [subscriptionId, user_id, package_id, billing_cycle, referenceNumber, amountPaid, expiresAt]
+                );
+            }
+        }
+
+        // 2. MGA SUSUNOD NA AUTO-RENEW PAYMENTS (Recurring Success)
+        else if (eventType === 'payment.paid' || eventType === 'invoice.payment_succeeded') {
+            const paymentAttributes = eventData.attributes;
+            const metadata = paymentAttributes.metadata || {};
+            const user_id = metadata.user_id;
+
+            if (user_id) {
+                const durationMonths = metadata.billing_cycle === 'ANNUAL' ? 12 : 1;
+
+                // Dagdagan ang expires_at batay sa kasalukuyang expiry o ngayon kung nag-expire na
+                await pool.query(
+                    `UPDATE rental_subscriptions 
+                     SET expires_at = CASE 
+                            WHEN expires_at > CURRENT_TIMESTAMP THEN expires_at + INTERVAL '${durationMonths} month'
+                            ELSE CURRENT_TIMESTAMP + INTERVAL '${durationMonths} month'
+                         END,
+                         status = 'ACTIVE',
+                         updated_at = CURRENT_TIMESTAMP
+                     WHERE user_id = $1`,
+                    [user_id]
+                );
+                console.log(`✅ Tagumpay na na-auto-renew ang subscription para sa user: ${user_id}`);
+            }
+        }
+
+        // 3. KUNG NAG-FAIL ANG AUTO-RENEW PAYMENTS
+        else if (eventType === 'payment.failed' || eventType === 'invoice.payment_failed') {
+            const paymentAttributes = eventData.attributes;
+            const metadata = paymentAttributes.metadata || {};
+            const user_id = metadata.user_id;
+
+            if (user_id) {
+                await pool.query(
+                    `UPDATE rental_subscriptions 
+                     SET status = 'PAST_DUE', updated_at = CURRENT_TIMESTAMP
+                     WHERE user_id = $1`,
+                    [user_id]
+                );
+                console.log(`❌ Nag-fail ang pagbabayad/auto-renew para sa user: ${user_id}`);
+            }
         }
 
         res.status(200).json({ received: true });
@@ -209,7 +253,6 @@ exports.renderSuccessPage = async (req, res) => {
 
         const separator = targetUrl.includes('?') ? '&' : '?';
 
-        // Ipinapasa natin ang referenceNumber pati na ang name, email, at phone patungo sa frontend registration page
         let redirectParams = `${separator}referenceNumber=${encodeURIComponent(ref)}&success=true`;
         if (name) redirectParams += `&name=${encodeURIComponent(name)}`;
         if (email) redirectParams += `&email=${encodeURIComponent(email)}`;
@@ -233,7 +276,6 @@ exports.renderCancelPage = async (req, res) => {
     res.send(`<html><body style="background:#0F172A;color:white;text-align:center;padding:50px;"><h1>✕ Payment Cancelled</h1></body></html>`);
 };
 
-//change plan
 exports.changePlan = async (req, res) => {
     const { userId, planId, cycle, successUrl, cancelUrl, cusEmail, cusName, cusPhone } = req.body;
 
@@ -249,7 +291,6 @@ exports.changePlan = async (req, res) => {
     }
 
     try {
-        // 1. KUNG LIBRE ANG PLAN (hal. Silong / 0 price)
         if (plan.monthlyPrice === 0) {
             const subscriptionId = `SUB-FREE-${Date.now()}`;
             const expiresAt = new Date();
@@ -274,7 +315,6 @@ exports.changePlan = async (req, res) => {
             });
         }
 
-        // 2. KUNG MAY BAYAD ANG PLAN — Gumamit ng PayMongo Checkout (Kailangan ang Webhook, Success/Cancel URLs)
         const isAnnual = cycle === 'ANNUAL';
         const rawPrice = isAnnual ? (plan.monthlyPrice * 12 * 0.85) : plan.monthlyPrice;
         const amountInCents = Math.round(rawPrice * 100);
@@ -335,7 +375,6 @@ exports.changePlan = async (req, res) => {
             }
         });
 
-        // Ibinabalik ang checkoutUrl para magamit ng frontend sa pag-redirect sa PayMongo
         return res.status(200).json({
             success: true,
             checkoutUrl: response.data.data.attributes.checkout_url,
@@ -361,10 +400,9 @@ exports.submitCustomInquiry = async (req, res) => {
         const adminEmail = process.env.EMAIL_USER || process.env.MAIL_USER;
         const planDisplayName = RENTAL_PLANS_BACKEND[planType?.toLowerCase()]?.displayName || planType || 'Eksklusibo / Custom';
 
-        // Pagsasagawa ng email notification para sa admin
         await mailTransporter.sendMail({
             from: `"Paupahan System Notifications" <${adminEmail}>`,
-            to: adminEmail, // Isinusugo sa sarili mong email galing sa .env
+            to: adminEmail,
             subject: `[Paupahan Inquiry] Bagong Mensahe mula kay ${name} (${planDisplayName})`,
             html: `
                 <div style="font-family: sans-serif; max-width: 600px; padding: 24px; background: #0F172A; color: #F8FAFC; border-radius: 16px;">
@@ -388,8 +426,6 @@ exports.submitCustomInquiry = async (req, res) => {
                 </div>
             `
         });
-
-        console.log(`✅ Naipadala ang Custom Inquiry email kay ${adminEmail} mula kay ${name} (${email})`);
 
         return res.status(200).json({
             success: true,
