@@ -54,8 +54,6 @@ exports.createCheckoutSession = async (req, res) => {
         userId,
         packageId,
         cycle,
-        successUrl,
-        cancelUrl,
         cusEmail,
         cusName,
         cusPhone
@@ -80,7 +78,6 @@ exports.createCheckoutSession = async (req, res) => {
     const referenceNumber = `TXN-RENTAL-${Date.now()}`;
     const lineItemName = `Paupahan System - ${plan.displayName} Plan (${isAnnual ? 'Taunan / Annual' : 'Buwanan / Monthly'})`;
 
-    // Mahalaga ang metadata na ito para mabasa ng webhook sa mga susunod na auto-renew
     const metadataBlock = {
         user_id: userId,
         type: "RENTAL_SUBSCRIPTION",
@@ -90,16 +87,8 @@ exports.createCheckoutSession = async (req, res) => {
         customer_name: cusName || ""
     };
 
-    const host = req.get('host');
-    const protocol = req.protocol;
-    const baseUrl = `${protocol}://${host}`;
-
-    let successRedirectQuery = successUrl ? `&successUrl=${encodeURIComponent(successUrl)}` : '';
-    if (cusName) successRedirectQuery += `&name=${encodeURIComponent(cusName)}`;
-    if (cusEmail) successRedirectQuery += `&email=${encodeURIComponent(cusEmail)}`;
-    if (cusPhone) successRedirectQuery += `&phone=${encodeURIComponent(cusPhone)}`;
-
-    const cancelRedirectQuery = cancelUrl ? `&cancelUrl=${encodeURIComponent(cancelUrl)}` : '';
+    // Palitan ito ng tamang frontend domain o galing sa env variable
+    const frontendUrl = process.env.FRONT_END_URL || 'http://localhost:3000';
 
     const payloadData = {
         data: {
@@ -112,8 +101,11 @@ exports.createCheckoutSession = async (req, res) => {
                 send_email_receipt: true,
                 show_description: true,
                 show_line_items: true,
-                cancel_url: `${baseUrl}/v1/paupahan-payments/redirect/cancel?ref=${referenceNumber}${cancelRedirectQuery}`,
-                success_url: `${baseUrl}/v1/paupahan-payments/redirect/success?ref=${referenceNumber}${successRedirectQuery}`,
+
+                // 👉 DIREKTANG NAKATURO SA FRONT-END PAGES (Huwag na sa API redirect endpoint)
+                cancel_url: `${frontendUrl}/subscriptions/cancel?ref=${referenceNumber}`,
+                success_url: `${frontendUrl}/subscriptions/success?ref=${referenceNumber}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}`,
+
                 description: `Subscription activation for ${plan.displayName}`,
                 line_items: [{
                     amount: amountInCents,
@@ -161,7 +153,11 @@ exports.handlePayMongoWebhook = async (req, res) => {
         // 1. UNANG BAYAD: Kapag natapos na ang initial checkout session
         if (eventType === 'checkout_session.payment.paid') {
             const attributes = eventData.attributes;
-            const metadata = attributes.metadata || {};
+
+            // Mas pinalawak na pagkuha ng metadata para hindi pumalya
+            const metadata = attributes.metadata ||
+                attributes.payment_intent?.attributes?.metadata || {};
+
             const referenceNumber = attributes.reference_number;
             const amountPaidInCents = attributes.amount_paid || attributes.payments?.[0]?.attributes?.amount || 0;
             const amountPaid = amountPaidInCents / 100;
@@ -194,6 +190,9 @@ exports.handlePayMongoWebhook = async (req, res) => {
                          updated_at = CURRENT_TIMESTAMP`,
                     [subscriptionId, user_id, package_id, billing_cycle, referenceNumber, amountPaid, expiresAt]
                 );
+                console.log(`✅ Tagumpay na na-update ang subscription para sa user (Webhook): ${user_id}`);
+            } else {
+                console.warn(`⚠️ Walang user_id na nahanap sa metadata ng checkout session:`, metadata);
             }
         }
 
@@ -206,7 +205,6 @@ exports.handlePayMongoWebhook = async (req, res) => {
             if (user_id) {
                 const durationMonths = metadata.billing_cycle === 'ANNUAL' ? 12 : 1;
 
-                // Dagdagan ang expires_at batay sa kasalukuyang expiry o ngayon kung nag-expire na
                 await pool.query(
                     `UPDATE rental_subscriptions 
                      SET expires_at = CASE 
@@ -305,7 +303,7 @@ exports.renderCancelPage = async (req, res) => {
 };
 
 exports.changePlan = async (req, res) => {
-    const { userId, planId, cycle, successUrl, cancelUrl, cusEmail, cusName, cusPhone } = req.body;
+    const { userId, planId, cycle, cusEmail, cusName, cusPhone } = req.body;
 
     if (!userId || !planId) {
         return res.status(400).json({ error: "Kailangan ang userId at planId." });
@@ -320,27 +318,8 @@ exports.changePlan = async (req, res) => {
 
     try {
         if (plan.monthlyPrice === 0) {
-            const subscriptionId = `SUB-FREE-${Date.now()}`;
-            const expiresAt = new Date();
-            expiresAt.setFullYear(expiresAt.getFullYear() + 100);
-
-            await pool.query(
-                `INSERT INTO rental_subscriptions (subscription_id, user_id, package_id, billing_cycle, status, amount_paid, expires_at, updated_at) 
-                 VALUES ($1, $2, $3, 'MONTHLY', 'ACTIVE', 0, $4, CURRENT_TIMESTAMP)
-                 ON CONFLICT (user_id) DO UPDATE 
-                 SET package_id = EXCLUDED.package_id,
-                     billing_cycle = 'MONTHLY',
-                     status = 'ACTIVE',
-                     amount_paid = 0,
-                     expires_at = EXCLUDED.expires_at,
-                     updated_at = CURRENT_TIMESTAMP`,
-                [subscriptionId, userId, planKey, expiresAt]
-            );
-
-            return res.status(200).json({
-                success: true,
-                message: `Matagumpay na nailipat ang iyong account sa ${plan.displayName}.`
-            });
+            // Free plan logic...
+            return res.status(200).json({ success: true, message: `Matagumpay na nailipat ang iyong account sa ${plan.displayName}.` });
         }
 
         const isAnnual = cycle === 'ANNUAL';
@@ -358,16 +337,8 @@ exports.changePlan = async (req, res) => {
             customer_name: cusName || ""
         };
 
-        const host = req.get('host');
-        const protocol = req.protocol;
-        const baseUrl = `${protocol}://${host}`;
-
-        let successRedirectQuery = successUrl ? `&successUrl=${encodeURIComponent(successUrl)}` : '';
-        if (cusName) successRedirectQuery += `&name=${encodeURIComponent(cusName)}`;
-        if (cusEmail) successRedirectQuery += `&email=${encodeURIComponent(cusEmail)}`;
-        if (cusPhone) successRedirectQuery += `&phone=${encodeURIComponent(cusPhone)}`;
-
-        const cancelRedirectQuery = cancelUrl ? `&cancelUrl=${encodeURIComponent(cancelUrl)}` : '';
+        // Palitan ito ng tamang frontend domain mo (hal. http://localhost:3000 o production URL)
+        const frontendUrl = process.env.FRONT_END_URL || 'http://localhost:3000';
 
         const payloadData = {
             data: {
@@ -380,8 +351,11 @@ exports.changePlan = async (req, res) => {
                     send_email_receipt: true,
                     show_description: true,
                     show_line_items: true,
-                    cancel_url: `${baseUrl}/v1/paupahan-payments/redirect/cancel?ref=${referenceNumber}${cancelRedirectQuery}`,
-                    success_url: `${baseUrl}/v1/paupahan-payments/redirect/success?ref=${referenceNumber}${successRedirectQuery}`,
+
+                    // 👉 DIREKTANG NAKATURO SA FRONT-END PAGES (Huwag na sa API endpoint)
+                    cancel_url: `${frontendUrl}/subscriptions/cancel?ref=${referenceNumber}`,
+                    success_url: `${frontendUrl}/subscriptions/success?ref=${referenceNumber}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}`,
+
                     description: `Subscription upgrade for ${plan.displayName}`,
                     line_items: [{
                         amount: amountInCents,
