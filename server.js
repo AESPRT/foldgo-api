@@ -1,5 +1,5 @@
 const express = require('express');
-const cors = require('cors'); // 1. Import the cors middleware
+const cors = require('cors');
 require('dotenv').config();
 
 const systemRoutes = require('./src/routes/system.routes');
@@ -9,25 +9,23 @@ const paupahanPaymentRoutes = require('./src/routes/paupahan.payment.routes');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// 2. Configure Allowed Origins
+// 1. Configure Allowed Origins
 const allowedOrigins = [
-    'https://aesprt.com',          // Base landing page domain
-    'https://fold-go.aesprt.com',  // Subdomain variant if used
-    'https://api.aesprt.com',      // API domain fallback
-    'http://localhost:3060',       // Your landing page Docker host port configuration
-    'http://localhost:3000',        // Standard local development port
+    'https://aesprt.com',
+    'https://fold-go.aesprt.com',
+    'https://api.aesprt.com',
+    'http://localhost:3060',
+    'http://localhost:3000',
     'https://paupahan.aesprt.com'
 ];
 
 app.use(cors({
     origin: function (origin, callback) {
-        // Allow server-to-server requests or tools like Postman (which don't send an Origin header)
         if (!origin) return callback(null, true);
 
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
-            // Log the blocked origin to your docker logs so you can see exactly what domain failed
             console.error(`🛑 Blocked by CORS: ${origin}`);
             callback(new Error('Blocked by CORS policy'));
         }
@@ -46,7 +44,41 @@ app.use(express.json({
     }
 }));
 
-// Health Check Endpoint
+// 2. BEARER TOKEN AUTHENTICATION MIDDLEWARE
+const verifyBearerToken = (req, res, next) => {
+    // Huwag i-lock ang Root Health Check o kaya ay ang mga Webhooks na galing sa labas (tulad ng PayMongo)
+    if (req.path === '/' || req.originalUrl.includes('webhook')) {
+        return next();
+    }
+
+    const authHeader = req.headers['authorization'];
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            success: false,
+            error: "Unauthorized: Walang ibinigay na Bearer Token."
+        });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const expectedToken = process.env.API_SECRET_TOKEN;
+
+    if (token !== expectedToken) {
+        console.error(`🛑 Invalid Token Attempt: ${token}`);
+        return res.status(403).json({
+            success: false,
+            error: "Forbidden: Mali ang token na ginamit."
+        });
+    }
+
+    // Kung tugma, ituloy ang request sa API route
+    next();
+};
+
+// I-apply ang middleware sa lahat ng /v1 routes
+app.use('/v1', verifyBearerToken);
+
+// Health Check Endpoint (Hindi saklaw ng token)
 app.get('/', (req, res) => {
     res.status(200).json({
         status: "success",
@@ -58,6 +90,7 @@ app.get('/', (req, res) => {
 app.use('/v1/laundry', systemRoutes);
 app.use('/v1/payments', paymentRoutes);
 app.use('/v1/paupahan-payments', paupahanPaymentRoutes);
+
 app.listen(port, () => {
     console.log(`🚀 Fold&Go cluster online and listening on port ${port}`);
 });
