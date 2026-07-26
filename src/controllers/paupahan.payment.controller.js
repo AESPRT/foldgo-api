@@ -163,7 +163,7 @@ exports.handlePayMongoWebhook = async (req, res) => {
             const amountPaid = amountPaidInCents / 100;
             const { user_id, package_id, billing_cycle } = metadata;
 
-            if (user_id) {
+            if (user_id && user_id !== "PENDING_REGISTRATION") {
                 await pool.query(
                     `INSERT INTO fold_and_go_transactions (reference_number, user_id, amount, payment_status, package_id) 
                      VALUES ($1, $2, $3, 'SUCCESS', $4)
@@ -192,7 +192,7 @@ exports.handlePayMongoWebhook = async (req, res) => {
                 );
                 console.log(`✅ Tagumpay na na-update ang subscription para sa user (Webhook): ${user_id}`);
             } else {
-                console.warn(`⚠️ Walang user_id na nahanap sa metadata ng checkout session:`, metadata);
+                console.warn(`⚠️ Walang valid user_id na nahanap sa metadata ng checkout session:`, metadata);
             }
         }
 
@@ -220,21 +220,36 @@ exports.handlePayMongoWebhook = async (req, res) => {
             }
         }
 
-        // 3. KUNG NAG-FAIL ANG AUTO-RENEW PAYMENTS
-        else if (eventType === 'payment.failed' || eventType === 'invoice.payment_failed') {
+        // 3. KUNG NAG-FAIL ANG PAYMENTS O AUTO-RENEW (Failed / Expired / Cancelled)
+        else if (eventType === 'payment.failed' || eventType === 'invoice.payment_failed' || eventType === 'checkout_session.payment.failed') {
             const paymentAttributes = eventData.attributes;
-            const metadata = paymentAttributes.metadata || {};
+            const metadata = paymentAttributes.metadata ||
+                paymentAttributes.payment_intent?.attributes?.metadata || {};
+            const referenceNumber = paymentAttributes.reference_number;
             const user_id = metadata.user_id;
 
-            if (user_id) {
+            // Kung may user_id, i-update ang status sa database na naging PAST_DUE o FAILED
+            if (user_id && user_id !== "PENDING_REGISTRATION") {
                 await pool.query(
                     `UPDATE rental_subscriptions 
                      SET status = 'PAST_DUE', updated_at = CURRENT_TIMESTAMP
                      WHERE user_id = $1`,
                     [user_id]
                 );
-                console.log(`❌ Nag-fail ang pagbabayad/auto-renew para sa user: ${user_id}`);
+                console.log(`❌ Nag-fail ang pagbabayad para sa user: ${user_id}`);
             }
+
+            // Opsyonal: Pwede mo ring i-record sa transactions table kung meron kang ganung table
+            if (referenceNumber) {
+                await pool.query(
+                    `UPDATE fold_and_go_transactions 
+                     SET payment_status = 'FAILED' 
+                     WHERE reference_number = $1`,
+                    [referenceNumber]
+                ).catch(() => {/* Huwag pansinin kung walang existing record pa */ });
+            }
+
+            console.warn(`⚠️ Na-detect ang nabigong transaksyon (Event: ${eventType}), Ref: ${referenceNumber}`);
         }
 
         res.status(200).json({ received: true });
