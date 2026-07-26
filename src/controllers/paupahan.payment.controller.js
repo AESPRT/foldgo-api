@@ -103,8 +103,8 @@ exports.createCheckoutSession = async (req, res) => {
                 show_line_items: true,
 
                 // 👉 DIREKTANG NAKATURO SA FRONT-END PAGES (Huwag na sa API redirect endpoint)
-                cancel_url: `${frontendUrl}/subscriptions/cancel?ref=${referenceNumber}`,
-                success_url: `${frontendUrl}/subscriptions/success?ref=${referenceNumber}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}`,
+                cancel_url: `${frontendUrl}/subscriptions/cancel?referenceNumber=${referenceNumber}`,
+                success_url: `${frontendUrl}/subscriptions/success?referenceNumber=${referenceNumber}&plan=${encodeURIComponent(packageId)}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}&phone=${encodeURIComponent(cusPhone || '')}`,
 
                 description: `Subscription activation for ${plan.displayName}`,
                 line_items: [{
@@ -352,9 +352,9 @@ exports.changePlan = async (req, res) => {
                     show_description: true,
                     show_line_items: true,
 
-                    // 👉 DIREKTANG NAKATURO SA FRONT-END PAGES (Huwag na sa API endpoint)
+                    // 👉 IDINAGDAG ANG &plan= AT &planName= SA SUCCESS URL
                     cancel_url: `${frontendUrl}/subscriptions/cancel?ref=${referenceNumber}`,
-                    success_url: `${frontendUrl}/subscriptions/success?ref=${referenceNumber}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}`,
+                    success_url: `${frontendUrl}/subscriptions/success?ref=${referenceNumber}&plan=${encodeURIComponent(planKey)}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}&phone=${encodeURIComponent(cusPhone || '')}`,
 
                     description: `Subscription upgrade for ${plan.displayName}`,
                     line_items: [{
