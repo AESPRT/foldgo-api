@@ -104,7 +104,7 @@ exports.createCheckoutSession = async (req, res) => {
 
                 // 👉 DIREKTANG NAKATURO SA FRONT-END PAGES (Huwag na sa API redirect endpoint)
                 cancel_url: `${frontendUrl}/subscriptions/cancel?referenceNumber=${referenceNumber}`,
-                success_url: `${frontendUrl}/subscriptions/success?referenceNumber=${referenceNumber}&plan=${encodeURIComponent(packageId)}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}&phone=${encodeURIComponent(cusPhone || '')}`,
+                success_url: `${frontendUrl}/subscriptions/success?referenceNumber=${referenceNumber}&plan=${encodeURIComponent(packageId)}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}&phone=${encodeURIComponent(cusPhone || '')}&isChangedPlan=${encodeURIComponent(false)}`,
 
                 description: `Subscription activation for ${plan.displayName}`,
                 line_items: [{
@@ -354,7 +354,7 @@ exports.changePlan = async (req, res) => {
 
                     // 👉 IDINAGDAG ANG &plan= AT &planName= SA SUCCESS URL
                     cancel_url: `${frontendUrl}/subscriptions/cancel?ref=${referenceNumber}`,
-                    success_url: `${frontendUrl}/subscriptions/success?ref=${referenceNumber}&plan=${encodeURIComponent(planKey)}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}&phone=${encodeURIComponent(cusPhone || '')}`,
+                    success_url: `${frontendUrl}/subscriptions/success?ref=${referenceNumber}&plan=${encodeURIComponent(planKey)}&planName=${encodeURIComponent(plan.displayName)}&name=${encodeURIComponent(cusName || '')}&email=${encodeURIComponent(cusEmail || '')}&phone=${encodeURIComponent(cusPhone || '')}&isChangedPlan=${encodeURIComponent(true)}`,
 
                     description: `Subscription upgrade for ${plan.displayName}`,
                     line_items: [{
