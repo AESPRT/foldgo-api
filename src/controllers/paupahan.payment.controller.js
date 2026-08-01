@@ -839,7 +839,8 @@ exports.sendMaintenanceUpdate = async (req, res) => {
 };
 
 exports.notifyLandlordPayment = async (req, res) => {
-    const { landlordEmail, landlordName, tenantName, amountPaid, invoiceNumber, referenceNumber, paymentMethod } = req.body;
+    // 🛠️ Idinagdag ang receiptUrl dito para masalo sa req.body
+    const { landlordEmail, landlordName, tenantName, amountPaid, invoiceNumber, referenceNumber, paymentMethod, receiptUrl } = req.body;
 
     if (!landlordEmail || !tenantName || !amountPaid) {
         return res.status(400).json({ error: "Kailangan ang email ng landlord, pangalan ng tenant, at halagang binayaran." });
@@ -873,6 +874,13 @@ exports.notifyLandlordPayment = async (req, res) => {
                         <p style="margin: 0; font-size: 13px; color: #E0F2FE; text-transform: uppercase; letter-spacing: 0.05em;">Halagang Isinumite</p>
                         <p style="margin: 4px 0 0 0; font-size: 24px; font-weight: bold; color: #FFFFFF;">${formattedAmount}</p>
                     </div>
+
+                    ${receiptUrl ? `
+                        <div style="background: #1E293B; padding: 16px; border-radius: 12px; margin: 16px 0; text-align: center;">
+                            <p style="margin: 0 0 8px 0; font-size: 13px; color: #38BDF8; font-weight: bold;">Patunay ng Resibo:</p>
+                            <img src="${receiptUrl}" alt="Payment Receipt" style="max-width: 100%; max-height: 250px; border-radius: 8px; border: 1px solid #38BDF8;" />
+                        </div>
+                    ` : ''}
 
                     <p style="font-size: 14px; color: #38BDF8; line-height: 1.5; text-align: center; margin: 20px 0;">
                         Mag-log in na sa iyong portal upang i-verify ang detalye at i-marka bilang <strong>Paid</strong> ang kanilang bill.
